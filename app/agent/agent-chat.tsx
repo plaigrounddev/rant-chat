@@ -36,6 +36,7 @@ import {
     PlugIcon,
     BoxIcon,
     TerminalIcon,
+    ExternalLinkIcon,
 } from "lucide-react";
 import { useCallback } from "react";
 
@@ -80,6 +81,99 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
                 {labels[status] || "Processing..."}
             </span>
         </div>
+    );
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Safely display a value — avoids [object Object] for nested args.
+ */
+function safePreview(value: unknown): string {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    // For arrays / objects, show a compact JSON snippet
+    try {
+        const str = JSON.stringify(value);
+        return str.length > 60 ? str.slice(0, 57) + "..." : str;
+    } catch {
+        return "";
+    }
+}
+
+/**
+ * Extract a Composio connect link from a tool result string.
+ * Per docs.composio.dev/docs/authentication — in-chat auth returns:
+ *   https://connect.composio.dev/link/ln_*
+ */
+function extractConnectLink(result: string | undefined): {
+    url: string;
+    toolkit: string;
+} | null {
+    if (!result) return null;
+    // Match connect.composio.dev URLs
+    const match = result.match(/(https:\/\/connect\.composio\.dev\/[^\s"']+)/i);
+    if (!match) return null;
+    const url = match[1];
+
+    // Try to extract the toolkit name from the context
+    // Composio results often mention the toolkit, e.g. "github", "gmail"
+    const toolkitPatterns = [
+        /toolkit["':]*\s*["']?([a-z_]+)/i,
+        /app["':]*\s*["']?([a-z_]+)/i,
+        /connect.*?([a-z]+)\s*account/i,
+        /authorize.*?([a-z]+)/i,
+    ];
+    let toolkit = "";
+    for (const pat of toolkitPatterns) {
+        const m = result.match(pat);
+        if (m) { toolkit = m[1].toLowerCase(); break; }
+    }
+    return { url, toolkit };
+}
+
+/**
+ * Composio toolkit logo URL from their open-source CDN.
+ * Source: github.com/ComposioHQ/open-logos
+ * Format: {toolkit}-logo.png
+ */
+function getToolkitLogoUrl(toolkit: string): string {
+    if (!toolkit) return "";
+    return `https://cdn.jsdelivr.net/gh/ComposioHQ/open-logos@master/${toolkit}-logo.png`;
+}
+
+// ── Connect Button ─────────────────────────────────────────────────────────
+
+function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
+    const logoUrl = getToolkitLogoUrl(toolkit);
+    const displayName = toolkit
+        ? toolkit.charAt(0).toUpperCase() + toolkit.slice(1).replace(/_/g, " ")
+        : "App";
+
+    return (
+        <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60 transition-colors no-underline"
+        >
+            {logoUrl ? (
+                <img
+                    src={logoUrl}
+                    alt={`${displayName} logo`}
+                    className="size-5 rounded-sm object-contain"
+                    onError={(e) => {
+                        // If logo fails to load from CDN, hide it
+                        (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                />
+            ) : (
+                <PlugIcon className="size-4 text-muted-foreground" />
+            )}
+            <span>Connect {displayName}</span>
+            <ExternalLinkIcon className="size-3.5 text-muted-foreground" />
+        </a>
     );
 }
 
@@ -172,6 +266,9 @@ function ToolCallCard({
 
     const hasArgs = !isBuiltIn && args && Object.keys(parsedArgs).length > 0;
 
+    // Check if result contains a Composio connect link
+    const connectLink = extractConnectLink(result);
+
     // For built-in tools, show a simpler inline display
     if (isBuiltIn) {
         return (
@@ -198,7 +295,7 @@ function ToolCallCard({
                     <span className="font-medium">{displayName}</span>
                     {Object.values(parsedArgs).length > 0 && (
                         <span className="text-muted-foreground text-xs truncate max-w-[200px]">
-                            ({String(Object.values(parsedArgs)[0] ?? "")})
+                            ({safePreview(Object.values(parsedArgs)[0])})
                         </span>
                     )}
                 </div>
@@ -207,19 +304,27 @@ function ToolCallCard({
             <div className="border-t border-border/40 px-3 py-2 space-y-2 text-xs">
                 {hasArgs && (
                     <div>
-                        <p className="font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                        <span className="font-medium text-muted-foreground uppercase tracking-wide mb-1 block">
                             Parameters
-                        </p>
+                        </span>
                         <pre className="rounded-md bg-muted/50 p-2 overflow-x-auto whitespace-pre-wrap text-foreground">
                             {JSON.stringify(parsedArgs, null, 2)}
                         </pre>
                     </div>
                 )}
-                {result && (
+
+                {/* Connect button for auth links */}
+                {connectLink && (
+                    <div className="py-2">
+                        <ConnectButton url={connectLink.url} toolkit={connectLink.toolkit} />
+                    </div>
+                )}
+
+                {result && !connectLink && (
                     <div>
-                        <p className="font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                        <span className="font-medium text-muted-foreground uppercase tracking-wide mb-1 block">
                             Result
-                        </p>
+                        </span>
                         <pre className="rounded-md bg-muted/50 p-2 overflow-x-auto whitespace-pre-wrap text-foreground max-h-48 overflow-y-auto">
                             {result}
                         </pre>
