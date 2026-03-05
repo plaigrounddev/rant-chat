@@ -25,6 +25,7 @@ import {
     executeComposioTool,
     isComposioTool,
     isComposioEnabled,
+    getToolkitLogos,
 } from "@/lib/agent/composio";
 
 // Force skills registration on module load
@@ -108,7 +109,9 @@ async function runAgentLoop(
     sendSSE("task_created", { taskId: taskRun.id });
 
     if (composioTools.length > 0) {
-        sendSSE("composio_ready", { toolCount: composioTools.length });
+        // Fetch toolkit logos from session.toolkits() → meta.logo
+        const toolkitLogos = await getToolkitLogos();
+        sendSSE("composio_ready", { toolCount: composioTools.length, toolkitLogos });
     }
 
     // Build the dynamic system prompt with memories & skills

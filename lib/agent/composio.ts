@@ -193,6 +193,53 @@ export async function executeComposioTool(
     }
 }
 
+// ── Toolkit Logos ──────────────────────────────────────────────────────────
+
+/**
+ * Fetch toolkit logos from Composio via session.toolkits().
+ *
+ * Per the SDK types (ToolKitItemSchema), each toolkit has:
+ *   { name, slug, meta: { logo?: string, description?, ... } }
+ *
+ * Returns a map of toolkit slug → logo URL.
+ * Results are cached for the session TTL.
+ */
+let toolkitLogosCache: { logos: Record<string, string>; createdAt: number } | null = null;
+
+export async function getToolkitLogos(
+    userId = "default_user"
+): Promise<Record<string, string>> {
+    // Return cached logos if fresh
+    if (toolkitLogosCache && Date.now() - toolkitLogosCache.createdAt < SESSION_TTL) {
+        return toolkitLogosCache.logos;
+    }
+
+    const session = await getSession(userId);
+    if (!session) return {};
+
+    try {
+        const toolkits = await session.toolkits();
+        const logos: Record<string, string> = {};
+
+        if (Array.isArray(toolkits)) {
+            for (const tk of toolkits) {
+                const slug = tk.slug || tk.name;
+                const logo = tk.meta?.logo || tk.logo;
+                if (slug && logo) {
+                    logos[slug.toLowerCase()] = logo;
+                }
+            }
+            console.log(`[Composio] Cached ${Object.keys(logos).length} toolkit logos`);
+        }
+
+        toolkitLogosCache = { logos, createdAt: Date.now() };
+        return logos;
+    } catch (err) {
+        console.error("[Composio] Failed to fetch toolkit logos:", err);
+        return {};
+    }
+}
+
 // ── Utility ────────────────────────────────────────────────────────────────
 
 /**

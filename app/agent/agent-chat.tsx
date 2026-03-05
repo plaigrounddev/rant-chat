@@ -134,14 +134,10 @@ function extractConnectLink(result: string | undefined): {
 }
 
 /**
- * Composio toolkit logo URL from their open-source CDN.
- * Source: github.com/ComposioHQ/open-logos
- * Format: {toolkit}-logo.png
+ * Composio toolkit logo URL.
+ * Logos come from session.toolkits() → meta.logo via the Composio SDK.
+ * Passed down from the useAgentChat hook as toolkitLogos map.
  */
-function getToolkitLogoUrl(toolkit: string): string {
-    if (!toolkit) return "";
-    return `https://cdn.jsdelivr.net/gh/ComposioHQ/open-logos@master/${toolkit}-logo.png`;
-}
 
 // ── Connect Button ─────────────────────────────────────────────────────────
 
@@ -163,8 +159,7 @@ function openConnectPopup(url: string) {
     );
 }
 
-function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
-    const logoUrl = getToolkitLogoUrl(toolkit);
+function ConnectButton({ url, toolkit, logoUrl }: { url: string; toolkit: string; logoUrl?: string }) {
     const displayName = toolkit
         ? toolkit.charAt(0).toUpperCase() + toolkit.slice(1).replace(/_/g, " ")
         : "App";
@@ -371,7 +366,7 @@ function ToolCallCard({
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function AgentChat() {
-    const { messages, status, sendMessage, isLoading } = useAgentChat();
+    const { messages, status, sendMessage, isLoading, toolkitLogos } = useAgentChat();
 
     const handleSubmit = useCallback(
         (value: string, _image: string | null) => {
@@ -465,7 +460,11 @@ export default function AgentChat() {
                                                 const link = findConnectLink(message.tools);
                                                 return link ? (
                                                     <div className="mb-4">
-                                                        <ConnectButton url={link.url} toolkit={link.toolkit} />
+                                                        <ConnectButton
+                                                            url={link.url}
+                                                            toolkit={link.toolkit}
+                                                            logoUrl={toolkitLogos[link.toolkit]}
+                                                        />
                                                     </div>
                                                 ) : null;
                                             })()}

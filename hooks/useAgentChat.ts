@@ -54,6 +54,7 @@ export function useAgentChat() {
     const [error, setError] = useState<string | null>(null);
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
     const [taskSteps, setTaskSteps] = useState<TaskStepInfo[]>([]);
+    const [toolkitLogos, setToolkitLogos] = useState<Record<string, string>>({});
     const previousResponseIdRef = useRef<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -189,6 +190,16 @@ export function useAgentChat() {
                         previousResponseIdRef.current = data.responseId as string;
                     }
                     break;
+
+                // ── Composio toolkit logos ──────────────────────────────
+                case "composio_ready": {
+                    // Toolkit logos from session.toolkits() → meta.logo
+                    const logos = data.toolkitLogos as Record<string, string> | undefined;
+                    if (logos && Object.keys(logos).length > 0) {
+                        setToolkitLogos(logos);
+                    }
+                    break;
+                }
 
                 // ── Task monitoring events ─────────────────────────────
                 case "task_created":
@@ -349,5 +360,6 @@ export function useAgentChat() {
         isLoading: status !== "ready" && status !== "error",
         currentTaskId,
         taskSteps,
+        toolkitLogos,
     };
 }
