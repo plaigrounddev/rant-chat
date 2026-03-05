@@ -9,7 +9,12 @@ import { createContext, runInContext } from "vm";
 
 const EXECUTION_TIMEOUT = 5000; // 5 seconds max
 
-export async function runCode(code: string): Promise<string> {
+/**
+ * Execute JavaScript in a sandboxed VM context.
+ * NOTE: vm.runInContext is synchronous and blocks the event loop for up to
+ * EXECUTION_TIMEOUT (5 s). Callers should be aware of this blocking behaviour.
+ */
+export function runCode(code: string): string {
     if (!code || !code.trim()) {
         return JSON.stringify({ error: "No code provided" });
     }

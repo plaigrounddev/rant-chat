@@ -87,7 +87,7 @@ class TaskStore {
         if (!run) return;
 
         const step = run.steps.find((s) => s.id === stepId);
-        if (!step) return;
+        if (!step || step.status === "completed" || step.status === "error") return;
 
         step.output = output;
         step.status = status;
@@ -104,7 +104,7 @@ class TaskStore {
 
     completeRun(runId: string, status: TaskRunStatus = "completed", error?: string) {
         const run = taskHistory.find((r) => r.id === runId);
-        if (!run) return;
+        if (!run || run.status === "completed" || run.status === "error") return;
 
         run.status = status;
         run.completedAt = new Date().toISOString();

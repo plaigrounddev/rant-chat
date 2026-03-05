@@ -41,6 +41,7 @@ export type AgentStatus =
     | "error";
 
 export interface TaskStepInfo {
+    id?: string;
     name: string;
     status: string;
     result?: string;
@@ -209,7 +210,17 @@ export function useAgentChat() {
                 case "task_step": {
                     const step = data.step as TaskStepInfo;
                     if (step) {
-                        setTaskSteps((prev) => [...prev, step]);
+                        setTaskSteps((prev) => {
+                            if (step.id) {
+                                const idx = prev.findIndex((s) => s.id === step.id);
+                                if (idx >= 0) {
+                                    const next = [...prev];
+                                    next[idx] = { ...next[idx], ...step };
+                                    return next;
+                                }
+                            }
+                            return [...prev, step];
+                        });
                     }
                     break;
                 }

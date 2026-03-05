@@ -20,7 +20,7 @@ const BLOCKED_HOSTS = [
     "192.168.",
 ];
 
-function isBlockedUrl(url: string): boolean {
+export function isBlockedUrl(url: string): boolean {
     try {
         const parsed = new URL(url);
         return BLOCKED_HOSTS.some(
@@ -77,8 +77,11 @@ export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
         // Only include body for methods that support it
         if (body && ["POST", "PUT", "PATCH"].includes(upperMethod)) {
             fetchOptions.body = body;
-            // Auto-set content-type if not provided
-            if (!headers["Content-Type"] && !headers["content-type"]) {
+            // Auto-set content-type if not provided (case-insensitive check per RFC 7230)
+            const hasContentType = Object.keys(headers).some(
+                (k) => k.toLowerCase() === "content-type"
+            );
+            if (!hasContentType) {
                 (fetchOptions.headers as Record<string, string>)["Content-Type"] =
                     "application/json";
             }
@@ -88,7 +91,7 @@ export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
         clearTimeout(timeout);
 
         const responseHeaders: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
+        response.headers.forEach((value: string, key: string) => {
             responseHeaders[key] = value;
         });
 

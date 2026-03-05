@@ -48,9 +48,9 @@ function formatSkillList(skills: Skill[]): string {
     return sections.join("\n\n");
 }
 
-export function buildSystemPrompt(config: PromptConfig = {}): string {
+export async function buildSystemPrompt(config: PromptConfig = {}): Promise<string> {
     const skills = getAllSkills();
-    const memoryContext = memoryStore.formatForContext();
+    const memoryContext = await memoryStore.formatForContext();
 
     const identity =
         config.identity ||

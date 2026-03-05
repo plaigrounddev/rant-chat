@@ -115,7 +115,7 @@ async function runAgentLoop(
     }
 
     // Build the dynamic system prompt with memories & skills
-    const systemInstructions = buildSystemPrompt({
+    const systemInstructions = await buildSystemPrompt({
         composioEnabled: isComposioEnabled(),
     });
 

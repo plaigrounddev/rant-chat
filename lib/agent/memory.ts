@@ -4,10 +4,10 @@
  * Mirrors Lindy AI's memory system: small snippets of information that
  * persist across all task runs and are auto-injected into every AI call.
  *
- * Uses file-based JSON storage (swappable for DB later).
+ * Uses file-based JSON storage with async I/O (swappable for DB later).
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { readFile, writeFile, mkdir, access } from "fs/promises";
 import { join } from "path";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -24,28 +24,49 @@ export interface Memory {
 const DATA_DIR = join(process.cwd(), "data");
 const MEMORY_FILE = join(DATA_DIR, "memories.json");
 
-function ensureDataDir() {
-    if (!existsSync(DATA_DIR)) {
-        mkdirSync(DATA_DIR, { recursive: true });
+/** Serialise concurrent writes into a sequential queue. */
+let writeQueue: Promise<void> = Promise.resolve();
+
+async function ensureDataDir() {
+    try {
+        await access(DATA_DIR);
+    } catch {
+        await mkdir(DATA_DIR, { recursive: true });
     }
 }
 
-function loadMemories(): Memory[] {
-    ensureDataDir();
-    if (!existsSync(MEMORY_FILE)) {
-        return [];
-    }
+async function loadMemories(): Promise<Memory[]> {
+    await ensureDataDir();
     try {
-        const raw = readFileSync(MEMORY_FILE, "utf-8");
-        return JSON.parse(raw) as Memory[];
+        await access(MEMORY_FILE);
     } catch {
         return [];
     }
+    try {
+        const raw = await readFile(MEMORY_FILE, "utf-8");
+        return JSON.parse(raw) as Memory[];
+    } catch (err) {
+        console.warn(
+            `[memory] Failed to parse ${MEMORY_FILE}:`,
+            (err as Error).message
+        );
+        return [];
+    }
 }
 
-function saveMemories(memories: Memory[]) {
-    ensureDataDir();
-    writeFileSync(MEMORY_FILE, JSON.stringify(memories, null, 2), "utf-8");
+async function saveMemories(memories: Memory[]): Promise<void> {
+    await ensureDataDir();
+    await writeFile(MEMORY_FILE, JSON.stringify(memories, null, 2), "utf-8");
+}
+
+/**
+ * Serialise a read-modify-write operation so concurrent calls
+ * don't lose each other's changes.
+ */
+function serialisedWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const result = writeQueue.then(fn);
+    writeQueue = result.then(() => { }, () => { });
+    return result;
 }
 
 function generateId(): string {
@@ -55,54 +76,60 @@ function generateId(): string {
 // ── Memory Store Class ─────────────────────────────────────────────────────
 
 class MemoryStore {
-    readAll(): Memory[] {
+    async readAll(): Promise<Memory[]> {
         return loadMemories();
     }
 
-    search(query: string): Memory[] {
-        const memories = loadMemories();
+    async search(query: string): Promise<Memory[]> {
+        const memories = await loadMemories();
         const q = query.toLowerCase();
         return memories.filter((m) => m.content.toLowerCase().includes(q));
     }
 
-    create(content: string): Memory {
-        const memories = loadMemories();
-        const now = new Date().toISOString();
-        const memory: Memory = {
-            id: generateId(),
-            content,
-            createdAt: now,
-            updatedAt: now,
-        };
-        memories.push(memory);
-        saveMemories(memories);
-        return memory;
+    async create(content: string): Promise<Memory> {
+        return serialisedWrite(async () => {
+            const memories = await loadMemories();
+            const now = new Date().toISOString();
+            const memory: Memory = {
+                id: generateId(),
+                content,
+                createdAt: now,
+                updatedAt: now,
+            };
+            memories.push(memory);
+            await saveMemories(memories);
+            return memory;
+        });
     }
 
-    update(id: string, content: string): Memory | null {
-        const memories = loadMemories();
-        const idx = memories.findIndex((m) => m.id === id);
-        if (idx === -1) return null;
-        memories[idx] = {
-            ...memories[idx],
-            content,
-            updatedAt: new Date().toISOString(),
-        };
-        saveMemories(memories);
-        return memories[idx];
+    async update(id: string, content: string): Promise<Memory | null> {
+        return serialisedWrite(async () => {
+            const memories = await loadMemories();
+            const idx = memories.findIndex((m) => m.id === id);
+            if (idx === -1) return null;
+            memories[idx] = {
+                ...memories[idx],
+                content,
+                updatedAt: new Date().toISOString(),
+            };
+            await saveMemories(memories);
+            return memories[idx];
+        });
     }
 
-    delete(id: string): boolean {
-        const memories = loadMemories();
-        const filtered = memories.filter((m) => m.id !== id);
-        if (filtered.length === memories.length) return false;
-        saveMemories(filtered);
-        return true;
+    async delete(id: string): Promise<boolean> {
+        return serialisedWrite(async () => {
+            const memories = await loadMemories();
+            const filtered = memories.filter((m) => m.id !== id);
+            if (filtered.length === memories.length) return false;
+            await saveMemories(filtered);
+            return true;
+        });
     }
 
     /** Format all memories for injection into the system prompt */
-    formatForContext(): string {
-        const memories = loadMemories();
+    async formatForContext(): Promise<string> {
+        const memories = await loadMemories();
         if (memories.length === 0) return "";
         const items = memories
             .map((m, i) => `${i + 1}. [${m.id}] ${m.content}`)

@@ -44,6 +44,14 @@ export interface Skill {
 const skills: Map<string, Skill> = new Map();
 
 export function registerSkill(skill: Skill) {
+    if (skills.has(skill.name)) {
+        // Allow identical re-registration (module reload), block mismatches
+        const existing = skills.get(skill.name)!;
+        if (existing.toolDefinition.name !== skill.toolDefinition.name) {
+            throw new Error(`Skill registration conflict: ${skill.name}`);
+        }
+        return; // no-op for identical re-registration
+    }
     skills.set(skill.name, skill);
 }
 
@@ -71,7 +79,13 @@ export async function executeSkill(
     if (!skill) {
         return JSON.stringify({ error: `Unknown skill: ${name}` });
     }
-    return skill.executor(args);
+    try {
+        return await skill.executor(args);
+    } catch (err) {
+        const message = (err as Error).message || "Skill execution failed";
+        console.error(`[skills] Error executing ${name}:`, message);
+        return JSON.stringify({ error: message, skill: name });
+    }
 }
 
 // ── Built-in Skills Registration ────────────────────────────────────────────
@@ -196,10 +210,12 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const query = args.query as string | undefined;
+        const query = typeof args.query === "string" && args.query.trim()
+            ? args.query
+            : undefined;
         const memories = query
-            ? memoryStore.search(query)
-            : memoryStore.readAll();
+            ? await memoryStore.search(query)
+            : await memoryStore.readAll();
         return JSON.stringify({
             count: memories.length,
             memories: memories.map((m) => ({
@@ -234,7 +250,10 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const memory = memoryStore.create(args.content as string);
+        if (typeof args.content !== "string" || !args.content.trim()) {
+            return JSON.stringify({ error: "content must be a non-empty string" });
+        }
+        const memory = await memoryStore.create(args.content);
         return JSON.stringify({
             success: true,
             memory: { id: memory.id, content: memory.content },
@@ -268,10 +287,13 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const memory = memoryStore.update(
-            args.id as string,
-            args.content as string
-        );
+        if (typeof args.id !== "string" || !args.id.trim()) {
+            return JSON.stringify({ error: "id must be a non-empty string" });
+        }
+        if (typeof args.content !== "string" || !args.content.trim()) {
+            return JSON.stringify({ error: "content must be a non-empty string" });
+        }
+        const memory = await memoryStore.update(args.id, args.content);
         if (!memory) {
             return JSON.stringify({ error: "Memory not found", id: args.id });
         }
@@ -302,7 +324,10 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const deleted = memoryStore.delete(args.id as string);
+        if (typeof args.id !== "string" || !args.id.trim()) {
+            return JSON.stringify({ error: "id must be a non-empty string" });
+        }
+        const deleted = await memoryStore.delete(args.id);
         if (!deleted) {
             return JSON.stringify({ error: "Memory not found", id: args.id });
         }

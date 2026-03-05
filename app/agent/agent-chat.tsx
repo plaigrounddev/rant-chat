@@ -75,7 +75,7 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
     };
 
     return (
-        <div className="flex items-center gap-2 px-4 py-2">
+        <div className="flex items-center gap-2 px-4 py-2" role="status" aria-live="polite" aria-atomic="true">
             <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground animate-pulse">
                 {labels[status] || "Processing..."}
