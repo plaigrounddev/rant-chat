@@ -70,13 +70,40 @@ async function getSession(userId: string): Promise<any | null> {
 
 /**
  * Convert a Composio tool schema to OpenAI function-calling format.
+ * Handles multiple possible formats from the Composio SDK:
+ * 1. { name, description, parameters } — flat format
+ * 2. { type: "function", function: { name, description, parameters } } — OpenAI format
+ * 3. { name } — minimal format from default provider
  */
-function toOpenAITool(tool: ComposioToolSchema): OpenAIFunctionTool {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toOpenAITool(tool: any): OpenAIFunctionTool | null {
+    let name: string | undefined;
+    let description: string | undefined;
+    let parameters: Record<string, unknown> | undefined;
+
+    // Format 1: OpenAI nested format { type: "function", function: { name, ... } }
+    if (tool.function && typeof tool.function === "object") {
+        name = tool.function.name;
+        description = tool.function.description;
+        parameters = tool.function.parameters;
+    }
+    // Format 2: Flat format { name, description, parameters }
+    else if (tool.name && typeof tool.name === "string") {
+        name = tool.name;
+        description = tool.description;
+        parameters = tool.parameters || tool.inputSchema;
+    }
+
+    if (!name) {
+        console.warn("Composio tool missing name, skipping:", JSON.stringify(tool).slice(0, 200));
+        return null;
+    }
+
     return {
         type: "function",
-        name: tool.name,
-        description: tool.description || `Composio tool: ${tool.name}`,
-        parameters: tool.parameters || { type: "object", properties: {}, required: [] },
+        name,
+        description: description || `Composio tool: ${name}`,
+        parameters: parameters || { type: "object", properties: {}, required: [] },
     };
 }
 
@@ -93,18 +120,25 @@ export async function getComposioTools(
     try {
         const tools = await session.tools();
 
-        // The default Composio provider returns an array of tool objects
-        // We need to extract the schema from each and convert to OpenAI format
+        // Debug: log the raw format so we can understand what Composio returns
+        if (Array.isArray(tools) && tools.length > 0) {
+            console.log(
+                `[Composio] Got ${tools.length} tools. Sample format:`,
+                JSON.stringify(tools[0]).slice(0, 300)
+            );
+        }
+
         if (Array.isArray(tools)) {
             return tools
-                .map((tool: ComposioToolSchema) => {
+                .map((tool: unknown) => {
                     try {
                         return toOpenAITool(tool);
-                    } catch {
+                    } catch (err) {
+                        console.warn("[Composio] Failed to convert tool:", err);
                         return null;
                     }
                 })
-                .filter((t): t is OpenAIFunctionTool => t !== null);
+                .filter((t): t is OpenAIFunctionTool => t !== null && !!t.name);
         }
 
         return [];

@@ -42,10 +42,12 @@ import { useCallback } from "react";
 // ── Suggestions ────────────────────────────────────────────────────────────
 
 const suggestions = [
-    "Research the company Anthropic — find founding date, employee count, and headquarters",
-    "Scrape https://example.com and summarize the content",
+    "Research everything about Anthropic — founding date, team size, and products",
+    "Scrape https://news.ycombinator.com and give me today's top stories",
     "Remember that I prefer concise responses with bullet points",
-    "Run this code: [1,2,3,4,5].reduce((a,b) => a+b, 0)",
+    "Run this code: Array.from({length: 10}, (_, i) => i * i)",
+    "What can you do? Show me all your capabilities",
+    "Search the web for the latest AI news this week",
 ];
 
 // ── Skill Badges ───────────────────────────────────────────────────────────
