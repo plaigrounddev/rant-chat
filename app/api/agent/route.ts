@@ -342,7 +342,7 @@ async function runAgentLoop(
 
                                         // Route to Composio or our custom skills
                                         const result = isComposioTool(fc.name)
-                                            ? await executeComposioTool(fc.name, args)
+                                            ? await executeComposioTool(fc.name, args, fc.call_id)
                                             : await executeTool(fc.name, args);
 
                                         // Log tool result to task store

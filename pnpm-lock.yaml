@@ -17,6 +17,9 @@ importers:
       '@composio/core':
         specifier: ^0.6.4
         version: 0.6.4(ws@8.19.0)(zod@3.25.76)
+      '@composio/openai':
+        specifier: ^0.6.4
+        version: 0.6.4(@composio/core@0.6.4(ws@8.19.0)(zod@3.25.76))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -551,6 +554,12 @@ packages:
     resolution: {integrity: sha512-d4V34itLrUWG/VBh7ciznKcxF/T22MBLHmuEzHoX0zsBOHsUmjYz5qtDh20S2p3FE+HHvLZxpXiv8yfdd4yI+Q==}
     peerDependencies:
       zod: '>=3.25.76 <5'
+
+  '@composio/openai@0.6.4':
+    resolution: {integrity: sha512-smLdnOJUCH20PxM56KDp39Dyv03ujoDt/aK5SASZD3rIvNgisdtf6iBdZxkkZL4VoNObALW1G1x98oiCxiQiCg==}
+    peerDependencies:
+      '@composio/core': 0.6.4
+      openai: ^6.16.0
 
   '@date-fns/tz@1.4.1':
     resolution: {integrity: sha512-P5LUNhtbj6YfI3iJjw5EL9eUAG6OitD0W3fWQcpQjDRc/QIsL0tRNuO1PcDvPccWL1fSTXXdE1ds+l95DV/OFA==}
@@ -6417,6 +6426,11 @@ snapshots:
   '@composio/json-schema-to-zod@0.1.20(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
+
+  '@composio/openai@0.6.4(@composio/core@0.6.4(ws@8.19.0)(zod@3.25.76))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))':
+    dependencies:
+      '@composio/core': 0.6.4(ws@8.19.0)(zod@3.25.76)
+      openai: 6.25.0(ws@8.19.0)(zod@3.25.76)
 
   '@date-fns/tz@1.4.1': {}
 

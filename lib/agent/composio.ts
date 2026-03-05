@@ -1,31 +1,57 @@
 /**
  * Composio Integration — 1000+ Tool Access
  *
- * Manages Composio sessions and provides tools for the agent.
- * Composio's 5 meta tools handle discovery, auth, and execution
- * across 1000+ apps (Gmail, GitHub, Slack, Sheets, etc.).
+ * Integration pattern from docs.composio.dev/docs/providers/openai:
  *
- * Uses @composio/core with its default provider to get tool schemas,
- * then converts them to OpenAI function-calling format for our
- * WebSocket-based agent loop.
+ * 1. Create Composio client with OpenAIResponsesProvider
+ * 2. Create session per user → session.tools() returns meta tools
+ * 3. Pass meta tools to OpenAI alongside our custom tools
+ * 4. Execute tool calls via provider.executeToolCall(userId, toolCall)
+ *
+ * Meta tools (COMPOSIO_SEARCH_TOOLS, COMPOSIO_MANAGE_CONNECTIONS, etc.)
+ * handle discovery, auth, and execution of 1000+ app integrations.
  */
 
 import { Composio } from "@composio/core";
+import { OpenAIResponsesProvider } from "@composio/openai";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface ComposioToolSchema {
-    name: string;
-    description?: string;
-    parameters?: Record<string, unknown>;
-    [key: string]: unknown;
-}
-
+// OpenAI Responses API function tool format
 interface OpenAIFunctionTool {
     type: "function";
     name: string;
     description: string;
     parameters: Record<string, unknown>;
+}
+
+// ── Composio Client (singleton) ────────────────────────────────────────────
+
+let composioInstance: Composio | null = null;
+let providerInstance: OpenAIResponsesProvider | null = null;
+
+function getComposio(): Composio | null {
+    if (composioInstance) return composioInstance;
+
+    const apiKey = process.env.COMPOSIO_API_KEY;
+    if (!apiKey) {
+        console.warn("[Composio] COMPOSIO_API_KEY not set — Composio tools disabled");
+        return null;
+    }
+
+    providerInstance = new OpenAIResponsesProvider();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    composioInstance = new Composio({
+        apiKey,
+        provider: providerInstance as any,
+    });
+
+    return composioInstance;
+}
+
+function getProvider(): OpenAIResponsesProvider | null {
+    if (!providerInstance) getComposio();
+    return providerInstance;
 }
 
 // ── Session Cache ──────────────────────────────────────────────────────────
@@ -34,20 +60,6 @@ interface OpenAIFunctionTool {
 const sessionCache: Map<string, { session: any; createdAt: number }> = new Map();
 const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
 
-// ── Composio Client ────────────────────────────────────────────────────────
-
-function getComposioClient(): Composio | null {
-    const apiKey = process.env.COMPOSIO_API_KEY;
-    if (!apiKey) {
-        console.warn("COMPOSIO_API_KEY not set — Composio tools disabled");
-        return null;
-    }
-    return new Composio();
-}
-
-/**
- * Create or retrieve a cached Composio session for a user.
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getSession(userId: string): Promise<any | null> {
     const cached = sessionCache.get(userId);
@@ -55,60 +67,56 @@ async function getSession(userId: string): Promise<any | null> {
         return cached.session;
     }
 
-    const client = getComposioClient();
-    if (!client) return null;
+    const composio = getComposio();
+    if (!composio) return null;
 
     try {
-        const session = await client.create(userId);
+        const session = await composio.create(userId);
         sessionCache.set(userId, { session, createdAt: Date.now() });
         return session;
     } catch (err) {
-        console.error("Failed to create Composio session:", err);
+        console.error("[Composio] Failed to create session:", err);
         return null;
     }
 }
 
+// ── Tool Retrieval ─────────────────────────────────────────────────────────
+
 /**
- * Convert a Composio tool schema to OpenAI function-calling format.
- * Handles multiple possible formats from the Composio SDK:
- * 1. { name, description, parameters } — flat format
- * 2. { type: "function", function: { name, description, parameters } } — OpenAI format
- * 3. { name } — minimal format from default provider
+ * Convert a Composio tool to our flat OpenAI function-calling format.
+ *
+ * OpenAIResponsesProvider.wrapTool returns:
+ *   { type: "function", name: "...", description: "...", parameters: {...} }
+ * which is exactly the OpenAI Responses API format.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toOpenAITool(tool: any): OpenAIFunctionTool | null {
-    let name: string | undefined;
-    let description: string | undefined;
-    let parameters: Record<string, unknown> | undefined;
-
-    // Format 1: OpenAI nested format { type: "function", function: { name, ... } }
-    if (tool.function && typeof tool.function === "object") {
-        name = tool.function.name;
-        description = tool.function.description;
-        parameters = tool.function.parameters;
-    }
-    // Format 2: Flat format { name, description, parameters }
-    else if (tool.name && typeof tool.name === "string") {
-        name = tool.name;
-        description = tool.description;
-        parameters = tool.parameters || tool.inputSchema;
+function normalizeToFlatTool(tool: any): OpenAIFunctionTool | null {
+    // Format: { type: "function", name: "COMPOSIO_*", ... } — already flat
+    if (tool.type === "function" && tool.name && typeof tool.name === "string") {
+        return {
+            type: "function",
+            name: tool.name,
+            description: tool.description || `Composio tool: ${tool.name}`,
+            parameters: tool.parameters || { type: "object", properties: {}, required: [] },
+        };
     }
 
-    if (!name) {
-        console.warn("Composio tool missing name, skipping:", JSON.stringify(tool).slice(0, 200));
-        return null;
+    // Format: { type: "function", function: { name, description, parameters } }
+    if (tool.function && typeof tool.function === "object" && tool.function.name) {
+        return {
+            type: "function",
+            name: tool.function.name,
+            description: tool.function.description || `Composio tool: ${tool.function.name}`,
+            parameters: tool.function.parameters || { type: "object", properties: {}, required: [] },
+        };
     }
 
-    return {
-        type: "function",
-        name,
-        description: description || `Composio tool: ${name}`,
-        parameters: parameters || { type: "object", properties: {}, required: [] },
-    };
+    console.warn("[Composio] Skipping tool with unknown format:", JSON.stringify(tool).slice(0, 200));
+    return null;
 }
 
 /**
- * Get Composio's meta tools formatted for OpenAI.
+ * Get Composio's meta tools formatted for OpenAI WebSocket API.
  * Returns empty array if COMPOSIO_API_KEY is not set.
  */
 export async function getComposioTools(
@@ -120,65 +128,72 @@ export async function getComposioTools(
     try {
         const tools = await session.tools();
 
-        // Debug: log the raw format so we can understand what Composio returns
         if (Array.isArray(tools) && tools.length > 0) {
             console.log(
-                `[Composio] Got ${tools.length} tools. Sample format:`,
-                JSON.stringify(tools[0]).slice(0, 300)
+                `[Composio] Got ${tools.length} meta tools. Sample keys:`,
+                Object.keys(tools[0])
             );
-        }
 
-        if (Array.isArray(tools)) {
             return tools
-                .map((tool: unknown) => {
-                    try {
-                        return toOpenAITool(tool);
-                    } catch (err) {
-                        console.warn("[Composio] Failed to convert tool:", err);
-                        return null;
-                    }
-                })
-                .filter((t): t is OpenAIFunctionTool => t !== null && !!t.name);
+                .map(normalizeToFlatTool)
+                .filter((t): t is OpenAIFunctionTool => t !== null);
         }
 
         return [];
     } catch (err) {
-        console.error("Failed to get Composio tools:", err);
+        console.error("[Composio] Failed to get tools:", err);
         return [];
     }
 }
 
+// ── Tool Execution ─────────────────────────────────────────────────────────
+
 /**
- * Execute a Composio tool call.
- * Routes through the session's tool execution.
+ * Execute a Composio tool call using the OpenAIResponsesProvider.
+ *
+ * Uses provider.executeToolCall(userId, toolCall) which expects:
+ *   { type: "function_call", call_id, name, arguments }
+ * This matches the OpenAI Responses/WebSocket API format.
  */
 export async function executeComposioTool(
     toolName: string,
     args: Record<string, unknown>,
+    callId: string,
     userId = "default_user"
 ): Promise<string> {
-    const session = await getSession(userId);
-    if (!session) {
+    const provider = getProvider();
+    if (!provider) {
         return JSON.stringify({
             error: "Composio not configured. Set COMPOSIO_API_KEY in .env.local",
         });
     }
 
     try {
-        // Use the session to execute the tool
-        // Composio handles auth, execution, and result formatting
-        const result = await session.executeTool({
+        // Format as OpenAI Responses function call
+        // This matches OpenAI.Responses.ResponseFunctionToolCall
+        const toolCall = {
+            type: "function_call" as const,
+            call_id: callId,
             name: toolName,
-            arguments: args,
-        });
+            arguments: JSON.stringify(args),
+            id: callId,
+            status: "completed" as const,
+        };
+
+        // executeToolCall is the per-call execution method
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await provider.executeToolCall(userId, toolCall as any);
 
         if (typeof result === "string") return result;
         return JSON.stringify(result, null, 2);
     } catch (err) {
         const message = (err as Error).message || "Composio tool execution failed";
+        console.error(`[Composio] Execution error (${toolName}):`, message);
         return JSON.stringify({ error: message, tool: toolName });
     }
 }
+
+// ── Utility ────────────────────────────────────────────────────────────────
 
 /**
  * Check if a tool name is a Composio meta tool.
