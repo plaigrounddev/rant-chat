@@ -218,19 +218,29 @@ export async function getToolkitLogos(
     if (!session) return {};
 
     try {
-        const toolkits = await session.toolkits();
+        const result = await session.toolkits();
         const logos: Record<string, string> = {};
 
-        if (Array.isArray(toolkits)) {
-            for (const tk of toolkits) {
-                const slug = tk.slug || tk.name;
-                const logo = tk.meta?.logo || tk.logo;
-                if (slug && logo) {
-                    logos[slug.toLowerCase()] = logo;
-                }
+        // session.toolkits() returns { items: [...], nextCursor, totalPages }
+        // Each item: { slug, name, logo: "https://logos.composio.dev/api/{slug}", ... }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const items: any[] = Array.isArray(result) ? result : result?.items || [];
+
+        for (const tk of items) {
+            const slug = tk.slug || tk.name;
+            // Logo is a top-level field, NOT nested under meta
+            const logo = tk.logo || tk.meta?.logo;
+            if (slug && logo) {
+                logos[slug.toLowerCase()] = logo;
             }
-            console.log(`[Composio] Cached ${Object.keys(logos).length} toolkit logos`);
         }
+
+        console.log(
+            `[Composio] Cached ${Object.keys(logos).length} toolkit logos.`,
+            Object.keys(logos).length > 0
+                ? `Sample: ${Object.keys(logos).slice(0, 3).join(", ")}`
+                : "No logos found"
+        );
 
         toolkitLogosCache = { logos, createdAt: Date.now() };
         return logos;
