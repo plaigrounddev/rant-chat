@@ -21,6 +21,8 @@ export interface PromptConfig {
     context?: string;
     /** Custom exit conditions */
     exitConditions?: string[];
+    /** Whether Composio integrations are available */
+    composioEnabled?: boolean;
 }
 
 // ── Prompt Builder ─────────────────────────────────────────────────────────
@@ -96,6 +98,17 @@ QUALITY STANDARDS:
 
 EXIT CONDITIONS — Stop working when:
 ${exitConditions.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+${config.composioEnabled ? `
+COMPOSIO INTEGRATIONS (1000+ Apps):
+You have access to Composio meta tools that let you work with 1000+ apps:
+- COMPOSIO_SEARCH_TOOLS: Search for tools by task (e.g., "send email", "create github issue")
+- COMPOSIO_MANAGE_CONNECTIONS: Generate auth links when a user needs to connect an app
+- COMPOSIO_MULTI_EXECUTE_TOOL: Execute any discovered tool with the user's credentials
+- COMPOSIO_REMOTE_WORKBENCH: Run Python code in a sandbox for bulk operations
+- COMPOSIO_REMOTE_BASH_TOOL: Run bash commands for data processing
+
+Workflow: Search for tools first → check if user is connected → if not, generate auth link → once connected, execute the tool.
+` : ""}
 ${config.context ? `\nADDITIONAL CONTEXT:\n${config.context}` : ""}`;
 
     return prompt;

@@ -33,6 +33,9 @@ import {
     SearchIcon,
     LinkIcon,
     MemoryStickIcon,
+    PlugIcon,
+    BoxIcon,
+    TerminalIcon,
 } from "lucide-react";
 import { useCallback } from "react";
 
@@ -53,6 +56,7 @@ const skillBadges = [
     { name: "HTTP Requests", icon: SendIcon, color: "text-amber-500" },
     { name: "Code Runner", icon: CodeIcon, color: "text-purple-500" },
     { name: "Memory", icon: BrainIcon, color: "text-rose-500" },
+    { name: "1000+ Apps", icon: PlugIcon, color: "text-indigo-500" },
 ];
 
 // ── Status indicator ───────────────────────────────────────────────────────
@@ -101,6 +105,12 @@ function ToolCallCard({
         create_memory: <BrainIcon className="size-4" />,
         update_memory: <BrainIcon className="size-4" />,
         delete_memory: <BrainIcon className="size-4" />,
+        // Composio meta tools
+        COMPOSIO_SEARCH_TOOLS: <SearchIcon className="size-4" />,
+        COMPOSIO_MANAGE_CONNECTIONS: <PlugIcon className="size-4" />,
+        COMPOSIO_MULTI_EXECUTE_TOOL: <ZapIcon className="size-4" />,
+        COMPOSIO_REMOTE_WORKBENCH: <BoxIcon className="size-4" />,
+        COMPOSIO_REMOTE_BASH_TOOL: <TerminalIcon className="size-4" />,
     };
 
     const toolLabels: Record<string, string> = {
@@ -112,6 +122,12 @@ function ToolCallCard({
         create_memory: "Storing Memory",
         update_memory: "Updating Memory",
         delete_memory: "Deleting Memory",
+        // Composio meta tools
+        COMPOSIO_SEARCH_TOOLS: "Searching Tools",
+        COMPOSIO_MANAGE_CONNECTIONS: "Managing Connection",
+        COMPOSIO_MULTI_EXECUTE_TOOL: "Executing Tool",
+        COMPOSIO_REMOTE_WORKBENCH: "Running in Workbench",
+        COMPOSIO_REMOTE_BASH_TOOL: "Running Command",
     };
 
     const statusConfig: Record<string, { icon: React.ReactNode; label: string }> = {

@@ -20,6 +20,12 @@ import WebSocket from "ws";
 import { getAgentTools, getCustomTools, executeTool } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/prompts";
 import { taskStore } from "@/lib/agent/task-store";
+import {
+    getComposioTools,
+    executeComposioTool,
+    isComposioTool,
+    isComposioEnabled,
+} from "@/lib/agent/composio";
 
 // Force skills registration on module load
 import "@/lib/agent/skills";
@@ -92,14 +98,23 @@ async function runAgentLoop(
 ) {
     let ws: WebSocket | null = null;
     const customTools = getCustomTools();
-    const hasCustomTools = customTools.length > 0;
+
+    // Get Composio tools (1000+ integrations) if configured
+    const composioTools = await getComposioTools();
+    const hasCustomTools = customTools.length > 0 || composioTools.length > 0;
 
     // Create a task run for monitoring
     const taskRun = taskStore.createRun(userMessage);
     sendSSE("task_created", { taskId: taskRun.id });
 
+    if (composioTools.length > 0) {
+        sendSSE("composio_ready", { toolCount: composioTools.length });
+    }
+
     // Build the dynamic system prompt with memories & skills
-    const systemInstructions = buildSystemPrompt();
+    const systemInstructions = buildSystemPrompt({
+        composioEnabled: isComposioEnabled(),
+    });
 
     try {
         ws = new WebSocket(OPENAI_WS_URL, {
@@ -118,7 +133,8 @@ async function runAgentLoop(
             sendSSE("status", { type: "connected" });
 
             // Build the initial request with full tool suite
-            const agentTools = getAgentTools();
+            // Merge our custom skills + Composio's meta tools
+            const agentTools = [...getAgentTools(), ...composioTools];
             const request: Record<string, unknown> = {
                 type: "response.create",
                 model: MODEL,
@@ -309,7 +325,7 @@ async function runAgentLoop(
                                 round: toolRound,
                             });
 
-                            // Execute all custom tool calls via skills
+                            // Execute all tool calls via skills or Composio
                             const toolResults = await Promise.all(
                                 functionCallOutputs.map(
                                     async (fc: {
@@ -324,7 +340,10 @@ async function runAgentLoop(
                                             // If args don't parse, pass empty
                                         }
 
-                                        const result = await executeTool(fc.name, args);
+                                        // Route to Composio or our custom skills
+                                        const result = isComposioTool(fc.name)
+                                            ? await executeComposioTool(fc.name, args)
+                                            : await executeTool(fc.name, args);
 
                                         // Log tool result to task store
                                         const existingStep = taskRun.steps.find(
@@ -370,7 +389,7 @@ async function runAgentLoop(
                             // Send follow-up with tool results
                             pendingFunctionCalls.clear();
 
-                            const agentTools = getAgentTools();
+                            const agentTools = [...getAgentTools(), ...composioTools];
                             const continuationRequest = {
                                 type: "response.create",
                                 model: MODEL,
