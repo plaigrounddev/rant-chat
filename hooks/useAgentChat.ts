@@ -161,6 +161,27 @@ export function useAgentChat() {
                     }
                 }
             }
+
+            // Flush trailing buffered frame (if any)
+            if (buffer.trim()) {
+                const tail = buffer.split("\n");
+                let eventName = "";
+                let eventData = "";
+                for (const line of tail) {
+                    if (line.startsWith("event: ")) eventName = line.slice(7);
+                    else if (line.startsWith("data: ")) eventData = line.slice(6);
+                }
+                if (eventName && eventData) {
+                    try {
+                        handleSSEEvent(eventName, JSON.parse(eventData));
+                    } catch {
+                        // ignore malformed tail frame
+                    }
+                }
+            }
+
+            // Normalise terminal status if "done" was missed
+            setStatus((prev) => (prev !== "ready" && prev !== "error" ? "ready" : prev));
         } catch (err) {
             if ((err as Error).name === "AbortError") return;
             const errorMsg =

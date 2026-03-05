@@ -51,7 +51,15 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    const body = await req.json();
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return new Response(
+            JSON.stringify({ error: "Invalid JSON body" }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    }
     const { message, previousResponseId } = body as {
         message: string;
         previousResponseId?: string;
@@ -66,6 +74,7 @@ export async function POST(req: NextRequest) {
 
     // Create a readable stream for SSE
     const encoder = new TextEncoder();
+    const runAbort = new AbortController();
     const stream = new ReadableStream({
         start(controller) {
             function sendSSE(event: string, data: unknown) {
@@ -77,7 +86,13 @@ export async function POST(req: NextRequest) {
                 controller.close();
             }
 
-            runAgentLoop(apiKey, message, previousResponseId, sendSSE, close);
+            void runAgentLoop(apiKey, message, previousResponseId, sendSSE, close).catch((err) => {
+                sendSSE("error", { code: "agent_error", message: String(err) });
+                close();
+            });
+        },
+        cancel() {
+            runAbort.abort();
         },
     });
 
@@ -186,6 +201,7 @@ async function runAgentLoop(
                             pendingFunctionCalls.set(event.item.id, fc);
                             sendSSE("tool_start", {
                                 id: event.item.id,
+                                call_id: event.item.call_id,
                                 name: event.item.name,
                                 type: "function_call",
                             });
@@ -293,6 +309,7 @@ async function runAgentLoop(
                         if (event.item?.type === "function_call") {
                             sendSSE("tool_call_complete", {
                                 id: event.item.id,
+                                call_id: event.item.call_id,
                                 name: event.item.name,
                                 arguments: event.item.arguments,
                             });

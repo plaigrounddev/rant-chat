@@ -88,6 +88,12 @@ export async function executeSkill(
     }
 }
 
+// ── Arg Validation Helper ───────────────────────────────────────────────────
+
+function asNonEmptyString(v: unknown): string | undefined {
+    return typeof v === "string" && v.trim() ? v : undefined;
+}
+
 // ── Built-in Skills Registration ────────────────────────────────────────────
 
 // Web Scraper — mirrors Lindy's "Website Content Crawler"
@@ -112,7 +118,11 @@ registerSkill({
             required: ["url"],
         },
     },
-    executor: async (args) => scrapeUrl(args.url as string),
+    executor: async (args) => {
+        const url = asNonEmptyString(args.url);
+        if (!url) return JSON.stringify({ error: "url must be a non-empty string" });
+        return scrapeUrl(url);
+    },
 });
 
 // HTTP Request — mirrors Lindy's "HTTP Request" skill
@@ -151,13 +161,16 @@ registerSkill({
             required: ["url"],
         },
     },
-    executor: async (args) =>
-        makeHttpRequest({
-            url: args.url as string,
-            method: args.method as string | undefined,
-            headers: args.headers as Record<string, string> | undefined,
-            body: args.body as string | undefined,
-        }),
+    executor: async (args) => {
+        const url = asNonEmptyString(args.url);
+        if (!url) return JSON.stringify({ error: "url must be a non-empty string" });
+        const method = typeof args.method === "string" ? args.method : undefined;
+        const headers = args.headers && typeof args.headers === "object"
+            ? (args.headers as Record<string, string>)
+            : undefined;
+        const body = typeof args.body === "string" ? args.body : undefined;
+        return makeHttpRequest({ url, method, headers, body });
+    },
 });
 
 // Run Code — mirrors Lindy's "Run Code" skill
@@ -182,7 +195,11 @@ registerSkill({
             required: ["code"],
         },
     },
-    executor: async (args) => runCode(args.code as string),
+    executor: async (args) => {
+        const code = asNonEmptyString(args.code);
+        if (!code) return JSON.stringify({ error: "code must be a non-empty string" });
+        return runCode(code);
+    },
 });
 
 // ── Memory Skills — mirrors Lindy's Memory Actions ──────────────────────────
