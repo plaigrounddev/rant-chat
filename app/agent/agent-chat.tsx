@@ -145,6 +145,24 @@ function getToolkitLogoUrl(toolkit: string): string {
 
 // ── Connect Button ─────────────────────────────────────────────────────────
 
+/**
+ * Opens the Composio auth link in a centered popup window.
+ * Per docs.composio.dev/docs/authenticating-users/in-chat-authentication,
+ * connect links are OAuth flows that require a redirect. A popup
+ * provides better UX than a full tab switch.
+ */
+function openConnectPopup(url: string) {
+    const w = 500;
+    const h = 700;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    window.open(
+        url,
+        "composio_connect",
+        `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+    );
+}
+
 function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
     const logoUrl = getToolkitLogoUrl(toolkit);
     const displayName = toolkit
@@ -152,11 +170,10 @@ function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
         : "App";
 
     return (
-        <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60 transition-colors no-underline"
+        <button
+            type="button"
+            onClick={() => openConnectPopup(url)}
+            className="inline-flex items-center gap-2.5 rounded-xl border border-border bg-card px-5 py-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60 hover:shadow-md transition-all cursor-pointer"
         >
             {logoUrl ? (
                 <img
@@ -164,7 +181,6 @@ function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
                     alt={`${displayName} logo`}
                     className="size-5 rounded-sm object-contain"
                     onError={(e) => {
-                        // If logo fails to load from CDN, hide it
                         (e.target as HTMLImageElement).style.display = "none";
                     }}
                 />
@@ -173,8 +189,35 @@ function ConnectButton({ url, toolkit }: { url: string; toolkit: string }) {
             )}
             <span>Connect {displayName}</span>
             <ExternalLinkIcon className="size-3.5 text-muted-foreground" />
-        </a>
+        </button>
     );
+}
+
+/**
+ * Scan tool results for Composio connect links.
+ * Returns the first connect link found, or null.
+ */
+function findConnectLink(
+    tools: { name: string; result?: string }[] | undefined
+): { url: string; toolkit: string } | null {
+    if (!tools) return null;
+    for (const tool of tools) {
+        const link = extractConnectLink(tool.result);
+        if (link) return link;
+    }
+    return null;
+}
+
+/**
+ * Strip Composio connect URLs from message content to avoid
+ * duplicating the branded Connect button the UI already renders.
+ */
+function stripConnectUrls(content: string): string {
+    // Remove markdown links to connect.composio.dev
+    let cleaned = content.replace(/\[([^\]]*?)\]\(https:\/\/connect\.composio\.dev\/[^)]+\)/gi, "");
+    // Remove bare URLs
+    cleaned = cleaned.replace(/https:\/\/connect\.composio\.dev\/\S+/gi, "");
+    return cleaned.trim();
 }
 
 // ── Tool call display ──────────────────────────────────────────────────────
@@ -266,9 +309,6 @@ function ToolCallCard({
 
     const hasArgs = !isBuiltIn && args && Object.keys(parsedArgs).length > 0;
 
-    // Check if result contains a Composio connect link
-    const connectLink = extractConnectLink(result);
-
     // For built-in tools, show a simpler inline display
     if (isBuiltIn) {
         return (
@@ -313,14 +353,7 @@ function ToolCallCard({
                     </div>
                 )}
 
-                {/* Connect button for auth links */}
-                {connectLink && (
-                    <div className="py-2">
-                        <ConnectButton url={connectLink.url} toolkit={connectLink.toolkit} />
-                    </div>
-                )}
-
-                {result && !connectLink && (
+                {result && (
                     <div>
                         <span className="font-medium text-muted-foreground uppercase tracking-wide mb-1 block">
                             Result
@@ -427,10 +460,22 @@ export default function AgentChat() {
                                                 </div>
                                             )}
 
-                                            {/* Message content */}
+                                            {/* Connect button — rendered at message level, NOT inside tool card */}
+                                            {(() => {
+                                                const link = findConnectLink(message.tools);
+                                                return link ? (
+                                                    <div className="mb-4">
+                                                        <ConnectButton url={link.url} toolkit={link.toolkit} />
+                                                    </div>
+                                                ) : null;
+                                            })()}
+
+                                            {/* Message content — strip connect URLs since we render a button */}
                                             <MessageContent>
                                                 <MessageResponse>
-                                                    {message.content}
+                                                    {findConnectLink(message.tools)
+                                                        ? stripConnectUrls(message.content)
+                                                        : message.content}
                                                 </MessageResponse>
                                             </MessageContent>
                                         </div>
