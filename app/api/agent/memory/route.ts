@@ -14,12 +14,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { memoryStore } from "@/lib/agent/memory";
 
 export async function GET() {
-    const memories = memoryStore.readAll();
+    const memories = await memoryStore.readAll();
     return NextResponse.json({ memories, count: memories.length });
 }
 
 export async function POST(req: NextRequest) {
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+        body = await req.json();
+    } catch {
+        return NextResponse.json(
+            { error: "Invalid JSON body" },
+            { status: 400 }
+        );
+    }
     const { content } = body as { content?: string };
 
     if (!content?.trim()) {
@@ -29,12 +37,20 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    const memory = memoryStore.create(content.trim());
+    const memory = await memoryStore.create(content.trim());
     return NextResponse.json({ memory }, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+        body = await req.json();
+    } catch {
+        return NextResponse.json(
+            { error: "Invalid JSON body" },
+            { status: 400 }
+        );
+    }
     const { id, content } = body as { id?: string; content?: string };
 
     if (!id || !content?.trim()) {
@@ -44,7 +60,7 @@ export async function PUT(req: NextRequest) {
         );
     }
 
-    const memory = memoryStore.update(id, content.trim());
+    const memory = await memoryStore.update(id, content.trim());
     if (!memory) {
         return NextResponse.json(
             { error: "Memory not found" },
@@ -56,7 +72,15 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+        body = await req.json();
+    } catch {
+        return NextResponse.json(
+            { error: "Invalid JSON body" },
+            { status: 400 }
+        );
+    }
     const { id } = body as { id?: string };
 
     if (!id) {
@@ -66,7 +90,7 @@ export async function DELETE(req: NextRequest) {
         );
     }
 
-    const deleted = memoryStore.delete(id);
+    const deleted = await memoryStore.delete(id);
     if (!deleted) {
         return NextResponse.json(
             { error: "Memory not found" },

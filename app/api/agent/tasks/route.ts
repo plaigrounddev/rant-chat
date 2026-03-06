@@ -12,7 +12,10 @@ import { taskStore } from "@/lib/agent/task-store";
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const rawLimit = parseInt(searchParams.get("limit") || "20", 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, 100)
+        : 20;
     const taskId = searchParams.get("id");
 
     // If a specific task ID is requested, return that task

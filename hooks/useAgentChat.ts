@@ -14,6 +14,7 @@ import { useCallback, useRef, useState } from "react";
 
 export interface ToolCallInfo {
     id: string;
+    call_id?: string;
     name: string;
     type: "function_call" | "web_search_call";
     arguments: string;
@@ -41,6 +42,7 @@ export type AgentStatus =
     | "error";
 
 export interface TaskStepInfo {
+    id?: string;
     name: string;
     status: string;
     result?: string;
@@ -160,6 +162,27 @@ export function useAgentChat() {
                     }
                 }
             }
+
+            // Flush trailing buffered frame (if any)
+            if (buffer.trim()) {
+                const tail = buffer.split("\n");
+                let eventName = "";
+                let eventData = "";
+                for (const line of tail) {
+                    if (line.startsWith("event: ")) eventName = line.slice(7);
+                    else if (line.startsWith("data: ")) eventData = line.slice(6);
+                }
+                if (eventName && eventData) {
+                    try {
+                        handleSSEEvent(eventName, JSON.parse(eventData));
+                    } catch {
+                        // ignore malformed tail frame
+                    }
+                }
+            }
+
+            // Normalise terminal status if "done" was missed
+            setStatus((prev) => (prev !== "ready" && prev !== "error" ? "ready" : prev));
         } catch (err) {
             if ((err as Error).name === "AbortError") return;
             const errorMsg =
@@ -209,7 +232,17 @@ export function useAgentChat() {
                 case "task_step": {
                     const step = data.step as TaskStepInfo;
                     if (step) {
-                        setTaskSteps((prev) => [...prev, step]);
+                        setTaskSteps((prev) => {
+                            if (step.id) {
+                                const idx = prev.findIndex((s) => s.id === step.id);
+                                if (idx >= 0) {
+                                    const next = [...prev];
+                                    next[idx] = { ...next[idx], ...step };
+                                    return next;
+                                }
+                            }
+                            return [...prev, step];
+                        });
                     }
                     break;
                 }
@@ -258,6 +291,7 @@ export function useAgentChat() {
                 case "tool_start": {
                     const toolCall: ToolCallInfo = {
                         id: data.id as string,
+                        call_id: data.call_id as string | undefined,
                         name: data.name as string,
                         type: (data.type as ToolCallInfo["type"]) || "function_call",
                         arguments: "",
@@ -305,14 +339,40 @@ export function useAgentChat() {
                 }
 
                 case "tool_result": {
-                    // Find tool call by call_id
-                    for (const tc of toolCalls.values()) {
-                        if (tc.name === (data.name as string) && !tc.result) {
-                            tc.result = data.result as string;
-                            tc.status = "completed";
-                            break;
+                    // Normalise result to string for safe rendering
+                    const rawResult = data.result;
+                    const resultStr = typeof rawResult === "string"
+                        ? rawResult
+                        : rawResult != null
+                            ? JSON.stringify(rawResult)
+                            : "";
+
+                    // Match by call_id first (exact), fall back to name
+                    const incomingCallId = data.call_id as string | undefined;
+                    let matched = false;
+
+                    if (incomingCallId) {
+                        for (const tc of toolCalls.values()) {
+                            if (tc.call_id === incomingCallId) {
+                                tc.result = resultStr;
+                                tc.status = "completed";
+                                matched = true;
+                                break;
+                            }
                         }
                     }
+
+                    // Fallback: match by name for calls without call_id
+                    if (!matched) {
+                        for (const tc of toolCalls.values()) {
+                            if (tc.name === (data.name as string) && !tc.result) {
+                                tc.result = resultStr;
+                                tc.status = "completed";
+                                break;
+                            }
+                        }
+                    }
+
                     updateAssistant({
                         tools: Array.from(toolCalls.values()),
                     });

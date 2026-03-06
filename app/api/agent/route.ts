@@ -51,7 +51,15 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    const body = await req.json();
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return new Response(
+            JSON.stringify({ error: "Invalid JSON body" }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    }
     const { message, previousResponseId } = body as {
         message: string;
         previousResponseId?: string;
@@ -66,6 +74,7 @@ export async function POST(req: NextRequest) {
 
     // Create a readable stream for SSE
     const encoder = new TextEncoder();
+    const runAbort = new AbortController();
     const stream = new ReadableStream({
         start(controller) {
             function sendSSE(event: string, data: unknown) {
@@ -77,7 +86,13 @@ export async function POST(req: NextRequest) {
                 controller.close();
             }
 
-            runAgentLoop(apiKey, message, previousResponseId, sendSSE, close);
+            void runAgentLoop(apiKey, message, previousResponseId, sendSSE, close).catch((err) => {
+                sendSSE("error", { code: "agent_error", message: String(err) });
+                close();
+            });
+        },
+        cancel() {
+            runAbort.abort();
         },
     });
 
@@ -115,7 +130,7 @@ async function runAgentLoop(
     }
 
     // Build the dynamic system prompt with memories & skills
-    const systemInstructions = buildSystemPrompt({
+    const systemInstructions = await buildSystemPrompt({
         composioEnabled: isComposioEnabled(),
     });
 
@@ -186,6 +201,7 @@ async function runAgentLoop(
                             pendingFunctionCalls.set(event.item.id, fc);
                             sendSSE("tool_start", {
                                 id: event.item.id,
+                                call_id: event.item.call_id,
                                 name: event.item.name,
                                 type: "function_call",
                             });
@@ -293,6 +309,7 @@ async function runAgentLoop(
                         if (event.item?.type === "function_call") {
                             sendSSE("tool_call_complete", {
                                 id: event.item.id,
+                                call_id: event.item.call_id,
                                 name: event.item.name,
                                 arguments: event.item.arguments,
                             });
@@ -329,65 +346,70 @@ async function runAgentLoop(
                             });
 
                             // Execute all tool calls via skills or Composio
-                            const toolResults = await Promise.all(
-                                functionCallOutputs.map(
-                                    async (fc: {
-                                        call_id: string;
-                                        name: string;
-                                        arguments: string;
-                                    }) => {
-                                        let args: Record<string, unknown> = {};
-                                        try {
-                                            args = JSON.parse(fc.arguments);
-                                        } catch {
-                                            // If args don't parse, pass empty
-                                        }
+                            // Execute tool calls sequentially to ensure
+                            // deterministic ordering of side-effectful
+                            // operations (emails, API writes, etc.).
+                            const toolResults: {
+                                type: "function_call_output";
+                                call_id: string;
+                                output: string;
+                            }[] = [];
 
-                                        // Route to Composio or our custom skills
-                                        const result = isComposioTool(fc.name)
-                                            ? await executeComposioTool(fc.name, args, fc.call_id)
-                                            : await executeTool(fc.name, args);
+                            for (const fc of functionCallOutputs as {
+                                call_id: string;
+                                name: string;
+                                arguments: string;
+                            }[]) {
+                                let args: Record<string, unknown> = {};
+                                try {
+                                    args = JSON.parse(fc.arguments);
+                                } catch {
+                                    // If args don't parse, pass empty
+                                }
 
-                                        // Log tool result to task store
-                                        const existingStep = taskRun.steps.find(
-                                            (s) =>
-                                                s.name === fc.name && s.status === "running"
-                                        );
-                                        if (existingStep) {
-                                            taskStore.completeStep(
-                                                taskRun.id,
-                                                existingStep.id,
-                                                result
-                                            );
-                                        }
+                                // Route to Composio or our custom skills
+                                const result = isComposioTool(fc.name)
+                                    ? await executeComposioTool(fc.name, args, fc.call_id)
+                                    : await executeTool(fc.name, args);
 
-                                        sendSSE("tool_result", {
-                                            call_id: fc.call_id,
-                                            name: fc.name,
-                                            arguments: args,
-                                            result,
-                                        });
+                                // Log tool result to task store
+                                const existingStep = taskRun.steps.find(
+                                    (s) =>
+                                        s.name === fc.name && s.status === "running"
+                                );
+                                if (existingStep) {
+                                    taskStore.completeStep(
+                                        taskRun.id,
+                                        existingStep.id,
+                                        result
+                                    );
+                                }
 
-                                        sendSSE("task_step", {
-                                            taskId: taskRun.id,
-                                            step: {
-                                                name: fc.name,
-                                                status: "completed",
-                                                result:
-                                                    typeof result === "string"
-                                                        ? result.slice(0, 200)
-                                                        : result,
-                                            },
-                                        });
+                                sendSSE("tool_result", {
+                                    call_id: fc.call_id,
+                                    name: fc.name,
+                                    arguments: args,
+                                    result,
+                                });
 
-                                        return {
-                                            type: "function_call_output" as const,
-                                            call_id: fc.call_id,
-                                            output: result,
-                                        };
-                                    }
-                                )
-                            );
+                                sendSSE("task_step", {
+                                    taskId: taskRun.id,
+                                    step: {
+                                        name: fc.name,
+                                        status: "completed",
+                                        result:
+                                            typeof result === "string"
+                                                ? result.slice(0, 200)
+                                                : result,
+                                    },
+                                });
+
+                                toolResults.push({
+                                    type: "function_call_output" as const,
+                                    call_id: fc.call_id,
+                                    output: result,
+                                });
+                            }
 
                             // Send follow-up with tool results
                             pendingFunctionCalls.clear();
@@ -469,7 +491,10 @@ async function runAgentLoop(
         });
 
         ws.on("close", () => {
-            // Connection closed; stream may already be closed
+            // Ensure task is finalized and SSE stream is closed even if
+            // the WebSocket closes without a prior error/completion event.
+            taskStore.completeRun(taskRun.id, "completed");
+            try { close(); } catch { /* stream already closed */ }
         });
     } catch (err) {
         console.error("Agent loop error:", err);

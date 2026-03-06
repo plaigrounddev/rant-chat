@@ -75,7 +75,7 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
     };
 
     return (
-        <div className="flex items-center gap-2 px-4 py-2">
+        <div className="flex items-center gap-2 px-4 py-2" role="status" aria-live="polite" aria-atomic="true">
             <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground animate-pulse">
                 {labels[status] || "Processing..."}
@@ -152,11 +152,12 @@ function openConnectPopup(url: string) {
     const h = 700;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
-    window.open(
+    const popup = window.open(
         url,
         "composio_connect",
-        `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+        `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes,noopener,noreferrer`
     );
+    if (popup) popup.opener = null;
 }
 
 function ConnectButton({ url, toolkit, logoUrl }: { url: string; toolkit: string; logoUrl?: string }) {

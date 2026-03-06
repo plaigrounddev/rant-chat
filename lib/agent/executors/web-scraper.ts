@@ -5,6 +5,8 @@
  * Fetches a URL and extracts clean text content.
  */
 
+import { isBlockedUrl } from "./http-request";
+
 const MAX_CONTENT_LENGTH = 8000;
 const FETCH_TIMEOUT = 10000;
 
@@ -30,6 +32,9 @@ function htmlToText(html: string): string {
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
         .replace(/&nbsp;/g, " ")
+        // Decode numeric (&#60;) and hex (&#x3C;) entities
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
         // Normalize whitespace
         .replace(/[ \t]+/g, " ")
         .replace(/\n\s*\n/g, "\n\n")
@@ -37,11 +42,23 @@ function htmlToText(html: string): string {
 }
 
 export async function scrapeUrl(url: string): Promise<string> {
+    let parsed: URL;
     try {
-        // Validate URL
-        new URL(url);
+        parsed = new URL(url);
     } catch {
         return JSON.stringify({ error: "Invalid URL provided" });
+    }
+
+    // Protocol enforcement — only allow http/https (blocks file://, ftp://, etc.)
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+        return JSON.stringify({ error: "Only http/https URLs are allowed" });
+    }
+
+    // SSRF protection — reject internal/localhost addresses
+    if (isBlockedUrl(url)) {
+        return JSON.stringify({
+            error: "Requests to internal/localhost addresses are not allowed",
+        });
     }
 
     try {
