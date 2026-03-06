@@ -38,7 +38,7 @@ import {
     TerminalIcon,
     ExternalLinkIcon,
 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 // ── Suggestions ────────────────────────────────────────────────────────────
 
@@ -292,7 +292,7 @@ function ToolCallCard({
 
     // ── Infer toolkit name & beautiful display name ──
     let derivedDisplayName = toolLabels[name] || name;
-    let fallbackIcon = toolIcons[name] || <WrenchIcon className="size-4" />;
+    const fallbackIcon = toolIcons[name] || <WrenchIcon className="size-4" />;
     let specificLogoUrl: string | undefined;
 
     if (isComposioMeta) {
@@ -414,14 +414,14 @@ function ToolCallCard({
         }
     }
 
-    const finalIcon = specificLogoUrl ? (
+    const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+
+    const finalIcon = (specificLogoUrl && !logoLoadFailed) ? (
         <img
             src={specificLogoUrl}
             alt=""
             className="size-4 object-contain"
-            onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-            }}
+            onError={() => setLogoLoadFailed(true)}
         />
     ) : fallbackIcon;
 
@@ -434,8 +434,8 @@ function ToolCallCard({
                 <span className="text-muted-foreground flex items-center justify-center">
                     {finalIcon}
                 </span>
-                <span className="text-muted-foreground">
-                    {statusLabel}
+                <span className="font-medium text-muted-foreground">
+                    {derivedDisplayName}
                 </span>
                 {statusIcon}
             </div>
