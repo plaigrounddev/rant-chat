@@ -14,6 +14,7 @@ import { useCallback, useRef, useState } from "react";
 
 export interface ToolCallInfo {
     id: string;
+    call_id?: string;
     name: string;
     type: "function_call" | "web_search_call";
     arguments: string;
@@ -290,6 +291,7 @@ export function useAgentChat() {
                 case "tool_start": {
                     const toolCall: ToolCallInfo = {
                         id: data.id as string,
+                        call_id: data.call_id as string | undefined,
                         name: data.name as string,
                         type: (data.type as ToolCallInfo["type"]) || "function_call",
                         arguments: "",
@@ -337,14 +339,40 @@ export function useAgentChat() {
                 }
 
                 case "tool_result": {
-                    // Find tool call by call_id
-                    for (const tc of toolCalls.values()) {
-                        if (tc.name === (data.name as string) && !tc.result) {
-                            tc.result = data.result as string;
-                            tc.status = "completed";
-                            break;
+                    // Normalise result to string for safe rendering
+                    const rawResult = data.result;
+                    const resultStr = typeof rawResult === "string"
+                        ? rawResult
+                        : rawResult != null
+                            ? JSON.stringify(rawResult)
+                            : "";
+
+                    // Match by call_id first (exact), fall back to name
+                    const incomingCallId = data.call_id as string | undefined;
+                    let matched = false;
+
+                    if (incomingCallId) {
+                        for (const tc of toolCalls.values()) {
+                            if (tc.call_id === incomingCallId) {
+                                tc.result = resultStr;
+                                tc.status = "completed";
+                                matched = true;
+                                break;
+                            }
                         }
                     }
+
+                    // Fallback: match by name for calls without call_id
+                    if (!matched) {
+                        for (const tc of toolCalls.values()) {
+                            if (tc.name === (data.name as string) && !tc.result) {
+                                tc.result = resultStr;
+                                tc.status = "completed";
+                                break;
+                            }
+                        }
+                    }
+
                     updateAssistant({
                         tools: Array.from(toolCalls.values()),
                     });

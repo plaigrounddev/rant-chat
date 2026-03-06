@@ -42,11 +42,16 @@ function htmlToText(html: string): string {
 }
 
 export async function scrapeUrl(url: string): Promise<string> {
+    let parsed: URL;
     try {
-        // Validate URL
-        new URL(url);
+        parsed = new URL(url);
     } catch {
         return JSON.stringify({ error: "Invalid URL provided" });
+    }
+
+    // Protocol enforcement — only allow http/https (blocks file://, ftp://, etc.)
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+        return JSON.stringify({ error: "Only http/https URLs are allowed" });
     }
 
     // SSRF protection — reject internal/localhost addresses

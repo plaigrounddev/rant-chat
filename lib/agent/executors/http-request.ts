@@ -8,24 +8,53 @@
 const MAX_RESPONSE_LENGTH = 8000;
 const FETCH_TIMEOUT = 15000;
 
-// Block requests to localhost / internal networks
+// Block requests to localhost / internal networks (SSRF protection)
 const BLOCKED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "0.0.0.0",
     "::1",
-    "169.254.",
-    "10.",
-    "172.16.",
-    "192.168.",
+    "169.254.",  // Link-local
+    "10.",       // RFC1918 Class A
+    "192.168.",  // RFC1918 Class C
+    "100.64.",   // Carrier-grade NAT (RFC6598)
 ];
+
+// IPv6 private/link-local prefixes
+const BLOCKED_IPV6_PREFIXES = [
+    "fc",  // fc00::/7 — Unique local addresses
+    "fd",  // fc00::/7 — Unique local addresses
+    "fe80", // fe80::/10 — Link-local
+];
+
+/**
+ * Check if a hostname falls within the RFC1918 172.16.0.0–172.31.255.255 range.
+ */
+function isBlocked172(hostname: string): boolean {
+    const m = hostname.match(/^172\.(\d+)\./);;
+    if (!m) return false;
+    const second = parseInt(m[1], 10);
+    return second >= 16 && second <= 31;
+}
 
 export function isBlockedUrl(url: string): boolean {
     try {
         const parsed = new URL(url);
-        return BLOCKED_HOSTS.some(
-            (h) => parsed.hostname === h || parsed.hostname.startsWith(h)
-        );
+        const h = parsed.hostname.toLowerCase();
+
+        // Check exact matches and prefix matches
+        if (BLOCKED_HOSTS.some((b) => h === b || h.startsWith(b))) return true;
+
+        // Check full RFC1918 172.16–31.x.x range
+        if (isBlocked172(h)) return true;
+
+        // Check IPv6 private/link-local prefixes
+        if (BLOCKED_IPV6_PREFIXES.some((p) => h.startsWith(p))) return true;
+
+        // Only allow http/https protocols
+        if (!["http:", "https:"].includes(parsed.protocol)) return true;
+
+        return false;
     } catch {
         return true;
     }
@@ -98,11 +127,20 @@ export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
         const contentType = response.headers.get("content-type") || "";
         let responseBody: string;
 
+        // Read as text first — avoids consuming the body stream twice and
+        // handles malformed JSON gracefully (server may claim application/json
+        // but return invalid content).
+        const rawText = await response.text();
+
         if (contentType.includes("application/json")) {
-            const json = await response.json();
-            responseBody = JSON.stringify(json, null, 2);
+            try {
+                responseBody = JSON.stringify(JSON.parse(rawText), null, 2);
+            } catch {
+                // Malformed JSON — return raw text for diagnostics
+                responseBody = rawText;
+            }
         } else {
-            responseBody = await response.text();
+            responseBody = rawText;
         }
 
         const truncated = responseBody.length > MAX_RESPONSE_LENGTH;
