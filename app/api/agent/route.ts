@@ -346,70 +346,65 @@ async function runAgentLoop(
                             });
 
                             // Execute all tool calls via skills or Composio
-                            // Execute tool calls sequentially to ensure
-                            // deterministic ordering of side-effectful
-                            // operations (emails, API writes, etc.).
-                            const toolResults: {
-                                type: "function_call_output";
-                                call_id: string;
-                                output: string;
-                            }[] = [];
+                            const toolResults = await Promise.all(
+                                functionCallOutputs.map(
+                                    async (fc: {
+                                        call_id: string;
+                                        name: string;
+                                        arguments: string;
+                                    }) => {
+                                        let args: Record<string, unknown> = {};
+                                        try {
+                                            args = JSON.parse(fc.arguments);
+                                        } catch {
+                                            // If args don't parse, pass empty
+                                        }
 
-                            for (const fc of functionCallOutputs as {
-                                call_id: string;
-                                name: string;
-                                arguments: string;
-                            }[]) {
-                                let args: Record<string, unknown> = {};
-                                try {
-                                    args = JSON.parse(fc.arguments);
-                                } catch {
-                                    // If args don't parse, pass empty
-                                }
+                                        // Route to Composio or our custom skills
+                                        const result = isComposioTool(fc.name)
+                                            ? await executeComposioTool(fc.name, args, fc.call_id)
+                                            : await executeTool(fc.name, args);
 
-                                // Route to Composio or our custom skills
-                                const result = isComposioTool(fc.name)
-                                    ? await executeComposioTool(fc.name, args, fc.call_id)
-                                    : await executeTool(fc.name, args);
+                                        // Log tool result to task store
+                                        const existingStep = taskRun.steps.find(
+                                            (s) =>
+                                                s.name === fc.name && s.status === "running"
+                                        );
+                                        if (existingStep) {
+                                            taskStore.completeStep(
+                                                taskRun.id,
+                                                existingStep.id,
+                                                result
+                                            );
+                                        }
 
-                                // Log tool result to task store
-                                const existingStep = taskRun.steps.find(
-                                    (s) =>
-                                        s.name === fc.name && s.status === "running"
-                                );
-                                if (existingStep) {
-                                    taskStore.completeStep(
-                                        taskRun.id,
-                                        existingStep.id,
-                                        result
-                                    );
-                                }
+                                        sendSSE("tool_result", {
+                                            call_id: fc.call_id,
+                                            name: fc.name,
+                                            arguments: args,
+                                            result,
+                                        });
 
-                                sendSSE("tool_result", {
-                                    call_id: fc.call_id,
-                                    name: fc.name,
-                                    arguments: args,
-                                    result,
-                                });
+                                        sendSSE("task_step", {
+                                            taskId: taskRun.id,
+                                            step: {
+                                                name: fc.name,
+                                                status: "completed",
+                                                result:
+                                                    typeof result === "string"
+                                                        ? result.slice(0, 200)
+                                                        : result,
+                                            },
+                                        });
 
-                                sendSSE("task_step", {
-                                    taskId: taskRun.id,
-                                    step: {
-                                        name: fc.name,
-                                        status: "completed",
-                                        result:
-                                            typeof result === "string"
-                                                ? result.slice(0, 200)
-                                                : result,
-                                    },
-                                });
-
-                                toolResults.push({
-                                    type: "function_call_output" as const,
-                                    call_id: fc.call_id,
-                                    output: result,
-                                });
-                            }
+                                        return {
+                                            type: "function_call_output" as const,
+                                            call_id: fc.call_id,
+                                            output: result,
+                                        };
+                                    }
+                                )
+                            );
 
                             // Send follow-up with tool results
                             pendingFunctionCalls.clear();
@@ -491,10 +486,7 @@ async function runAgentLoop(
         });
 
         ws.on("close", () => {
-            // Ensure task is finalized and SSE stream is closed even if
-            // the WebSocket closes without a prior error/completion event.
-            taskStore.completeRun(taskRun.id, "completed");
-            try { close(); } catch { /* stream already closed */ }
+            // Connection closed; stream may already be closed
         });
     } catch (err) {
         console.error("Agent loop error:", err);
