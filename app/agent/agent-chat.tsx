@@ -38,7 +38,7 @@ import {
     TerminalIcon,
     ExternalLinkIcon,
 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 // ── Suggestions ────────────────────────────────────────────────────────────
 
@@ -86,21 +86,7 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Safely display a value — avoids [object Object] for nested args.
- */
-function safePreview(value: unknown): string {
-    if (value === null || value === undefined) return "";
-    if (typeof value === "string") return value;
-    if (typeof value === "number" || typeof value === "boolean") return String(value);
-    // For arrays / objects, show a compact JSON snippet
-    try {
-        const str = JSON.stringify(value);
-        return str.length > 60 ? str.slice(0, 57) + "..." : str;
-    } catch {
-        return "";
-    }
-}
+// safePreview removed — we no longer show ugly JSON previews in the tool header
 
 /**
  * Extract a Composio connect link from a tool result string.
@@ -224,12 +210,14 @@ function ToolCallCard({
     args,
     result,
     status,
+    toolkitLogos,
 }: {
     name: string;
     type: "function_call" | "web_search_call";
     args: string;
     result?: string;
     status: string;
+    toolkitLogos: Record<string, string>;
 }) {
     const toolIcons: Record<string, React.ReactNode> = {
         web_search: <GlobeIcon className="size-4" />,
@@ -290,10 +278,6 @@ function ToolCallCard({
 
     const { icon: statusIcon, label: statusLabel } = statusConfig[status] || statusConfig.streaming;
 
-    const isBuiltIn = type === "web_search_call";
-    const displayName = toolLabels[name] || name;
-    const displayIcon = toolIcons[name] || <WrenchIcon className="size-4" />;
-
     let parsedArgs: Record<string, unknown> = {};
     if (args) {
         try {
@@ -303,17 +287,155 @@ function ToolCallCard({
         }
     }
 
+    const isComposioMeta = name.startsWith("COMPOSIO_");
+    const isBuiltIn = type === "web_search_call" || (!isComposioMeta && !!toolLabels[name]);
+
+    // ── Infer toolkit name & beautiful display name ──
+    let derivedDisplayName = toolLabels[name] || name;
+    const fallbackIcon = toolIcons[name] || <WrenchIcon className="size-4" />;
+    let specificLogoUrl: string | undefined;
+
+    if (isComposioMeta) {
+        // Try to guess the app/toolkit from context
+        let inferredToolkit = "";
+
+        // COMPOSIO_MULTI_EXECUTE_TOOL usually has another tool name in its args
+        if (name === "COMPOSIO_MULTI_EXECUTE_TOOL") {
+            // Raw name might look like "gmail_send_email"
+            const subToolName = (parsedArgs.toolName as string) || (parsedArgs.tool_name as string) || "";
+            if (subToolName) {
+                const parts = subToolName.split("_");
+                inferredToolkit = parts[0].toLowerCase();
+                // Dynamic action verbs mapped to conversational labels
+                const lowerAction = parts.slice(1).join("_");
+                let actionVerb = "Using";
+                let prep = "with";
+
+                if (lowerAction.includes("search") || lowerAction.includes("find") || lowerAction.includes("list")) {
+                    actionVerb = "Searching";
+                    prep = ""; // "Searching Gmail"
+                } else if (lowerAction.includes("fetch") || lowerAction.includes("get") || lowerAction.includes("read")) {
+                    actionVerb = "Fetching from";
+                    prep = ""; // "Fetching from Gmail"
+                } else if (lowerAction.includes("create") || lowerAction.includes("add") || lowerAction.includes("insert")) {
+                    actionVerb = "Creating in";
+                    prep = ""; // "Creating in Notion"
+                } else if (lowerAction.includes("update") || lowerAction.includes("edit") || lowerAction.includes("modify")) {
+                    actionVerb = "Updating in";
+                    prep = ""; // "Updating in Notion"
+                } else if (lowerAction.includes("send") || lowerAction.includes("write") || lowerAction.includes("post")) {
+                    actionVerb = "Sending to";
+                    prep = ""; // "Sending to Slack"
+                } else if (lowerAction.includes("delete") || lowerAction.includes("remove")) {
+                    actionVerb = "Deleting from";
+                    prep = ""; // "Deleting from Drive"
+                }
+
+                const formattedApp = inferredToolkit.charAt(0).toUpperCase() + inferredToolkit.slice(1);
+
+                // e.g "Fetching from Gmail" or "Using Github"
+                if (prep === "") {
+                    derivedDisplayName = `${actionVerb} ${formattedApp}`;
+                } else {
+                    derivedDisplayName = `${actionVerb} ${formattedApp} ${prep}`; // Fallback struct
+
+                    // Specific fallback if actionVerb is raw Using
+                    if (actionVerb === "Using") {
+                        const formattedRawAction = parts.slice(1).map(s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()).join(" ");
+                        derivedDisplayName = `${formattedRawAction} (${formattedApp})`;
+                    }
+                }
+            }
+        }
+        // COMPOSIO_MANAGE_CONNECTIONS — parse the toolkit from args
+        else if (name === "COMPOSIO_MANAGE_CONNECTIONS") {
+            const queryStr = JSON.stringify(parsedArgs).toLowerCase();
+            const knownApps = Object.keys(toolkitLogos);
+            for (const app of knownApps) {
+                if (queryStr.includes(app)) {
+                    inferredToolkit = app;
+                    const formattedApp = app.charAt(0).toUpperCase() + app.slice(1);
+                    derivedDisplayName = `Connecting to ${formattedApp}`;
+                    break;
+                }
+            }
+            // Fallback: try common arg fields
+            if (!inferredToolkit) {
+                const toolkit = (parsedArgs.toolkit as string) || (parsedArgs.app as string) || (parsedArgs.appName as string) || "";
+                if (toolkit) {
+                    inferredToolkit = toolkit.toLowerCase();
+                    const formattedApp = inferredToolkit.charAt(0).toUpperCase() + inferredToolkit.slice(1);
+                    derivedDisplayName = `Connecting to ${formattedApp}`;
+                }
+            }
+        }
+        // COMPOSIO_SEARCH_TOOLS usually has a query
+        else if (name === "COMPOSIO_SEARCH_TOOLS") {
+            const queryStr = JSON.stringify(parsedArgs).toLowerCase();
+            const knownApps = Object.keys(toolkitLogos);
+            for (const app of knownApps) {
+                if (queryStr.includes(app)) {
+                    inferredToolkit = app;
+                    const formattedApp = app.charAt(0).toUpperCase() + app.slice(1);
+                    derivedDisplayName = `Searching Tools (${formattedApp})`;
+                    break;
+                }
+            }
+        }
+        // COMPOSIO_REMOTE_WORKBENCH — Python sandbox
+        else if (name === "COMPOSIO_REMOTE_WORKBENCH") {
+            const queryStr = JSON.stringify(parsedArgs).toLowerCase();
+            const knownApps = Object.keys(toolkitLogos);
+            for (const app of knownApps) {
+                if (queryStr.includes(app)) {
+                    inferredToolkit = app;
+                    const formattedApp = app.charAt(0).toUpperCase() + app.slice(1);
+                    derivedDisplayName = `Working in ${formattedApp}`;
+                    break;
+                }
+            }
+        }
+        // COMPOSIO_REMOTE_BASH_TOOL — Bash commands
+        else if (name === "COMPOSIO_REMOTE_BASH_TOOL") {
+            const queryStr = JSON.stringify(parsedArgs).toLowerCase();
+            const knownApps = Object.keys(toolkitLogos);
+            for (const app of knownApps) {
+                if (queryStr.includes(app)) {
+                    inferredToolkit = app;
+                    const formattedApp = app.charAt(0).toUpperCase() + app.slice(1);
+                    derivedDisplayName = `Running command for ${formattedApp}`;
+                    break;
+                }
+            }
+        }
+
+        if (inferredToolkit && toolkitLogos[inferredToolkit]) {
+            specificLogoUrl = toolkitLogos[inferredToolkit];
+        }
+    }
+
+    const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+
+    const finalIcon = (specificLogoUrl && !logoLoadFailed) ? (
+        <img
+            src={specificLogoUrl}
+            alt=""
+            className="size-4 object-contain"
+            onError={() => setLogoLoadFailed(true)}
+        />
+    ) : fallbackIcon;
+
     const hasArgs = !isBuiltIn && args && Object.keys(parsedArgs).length > 0;
 
     // For built-in tools, show a simpler inline display
     if (isBuiltIn) {
         return (
             <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm mb-2">
-                <span className="text-muted-foreground">
-                    {displayIcon}
+                <span className="text-muted-foreground flex items-center justify-center">
+                    {finalIcon}
                 </span>
-                <span className="text-muted-foreground">
-                    {statusLabel}
+                <span className="font-medium text-muted-foreground">
+                    {derivedDisplayName}
                 </span>
                 {statusIcon}
             </div>
@@ -325,15 +447,10 @@ function ToolCallCard({
         <details className="group not-prose mb-3 w-full rounded-lg border border-border/60 bg-card/50 overflow-hidden">
             <summary className="flex w-full cursor-pointer items-center justify-between gap-3 p-3 text-sm hover:bg-muted/30 transition-colors">
                 <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">
-                        {displayIcon}
+                    <span className="text-muted-foreground flex items-center justify-center">
+                        {finalIcon}
                     </span>
-                    <span className="font-medium">{displayName}</span>
-                    {Object.values(parsedArgs).length > 0 && (
-                        <span className="text-muted-foreground text-xs truncate max-w-[200px]">
-                            ({safePreview(Object.values(parsedArgs)[0])})
-                        </span>
-                    )}
+                    <span className="font-medium">{derivedDisplayName}</span>
                 </div>
                 {statusIcon}
             </summary>
@@ -451,6 +568,7 @@ export default function AgentChat() {
                                                             args={tool.arguments}
                                                             result={tool.result}
                                                             status={tool.status}
+                                                            toolkitLogos={toolkitLogos}
                                                         />
                                                     ))}
                                                 </div>
