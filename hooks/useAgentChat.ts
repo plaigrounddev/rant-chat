@@ -254,7 +254,11 @@ export function useAgentChat() {
                 // ── Message events ─────────────────────────────────────
                 case "message_start":
                     setStatus("streaming");
-                    currentContent = "";
+                    // Don't reset content on continuation rounds —
+                    // append a separator so text accumulates
+                    if (currentContent.length > 0) {
+                        currentContent += "\n\n";
+                    }
                     break;
 
                 case "text_delta":

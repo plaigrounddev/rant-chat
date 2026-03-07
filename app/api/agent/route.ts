@@ -33,7 +33,7 @@ import {
 import "@/lib/agent/skills";
 
 const OPENAI_WS_URL = "wss://api.openai.com/v1/responses";
-const MODEL = "gpt-4o";
+const MODEL = "gpt-4.1";
 const MAX_TOOL_ROUNDS = 15; // Lindy agents can run 8+ actions; we allow 15
 
 interface FunctionCall {
