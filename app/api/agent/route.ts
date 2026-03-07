@@ -385,6 +385,22 @@ async function runAgentLoop(
                                             );
                                         }
 
+                                        // Stream special SSE events for reasoning tools
+                                        if (fc.name === "think") {
+                                            const thought = args.thought as string || "";
+                                            sendSSE("agent_thinking", {
+                                                call_id: fc.call_id,
+                                                thought,
+                                            });
+                                        } else if (fc.name === "task_plan") {
+                                            sendSSE("agent_plan", {
+                                                call_id: fc.call_id,
+                                                goal: args.goal as string || "",
+                                                steps: args.steps as string || "",
+                                                estimated_rounds: args.estimated_rounds as number || 0,
+                                            });
+                                        }
+
                                         sendSSE("tool_result", {
                                             call_id: fc.call_id,
                                             name: fc.name,

@@ -29,7 +29,8 @@ export type SkillCategory =
     | "http"
     | "email"
     | "calendar"
-    | "code";
+    | "code"
+    | "reasoning";
 
 export interface Skill {
     name: string;
@@ -470,5 +471,81 @@ registerSkill({
         }
 
         return JSON.stringify(report, null, 2);
+    },
+});
+
+// ── Think — Devin-inspired reasoning scratchpad ─────────────────────────────
+
+registerSkill({
+    name: "think",
+    description:
+        "A private reasoning scratchpad. Use this to plan your approach, reflect on results, verify your work, or reason through complex decisions. Your thoughts are NOT shown to the user — they are purely for your own reasoning. This is a zero-cost tool: it executes instantly and returns your thoughts back to you.",
+    category: "reasoning",
+    toolDefinition: {
+        type: "function",
+        name: "think",
+        description:
+            "Private reasoning scratchpad. Use BEFORE starting work (to plan), DURING work (to evaluate results and decide next steps), and BEFORE completing (to self-verify). Think before you act.",
+        parameters: {
+            type: "object",
+            properties: {
+                thought: {
+                    type: "string",
+                    description:
+                        "Your private reasoning. Plan steps, evaluate results, consider alternatives, verify work quality. Be thorough — this is your internal monologue.",
+                },
+            },
+            required: ["thought"],
+        },
+    },
+    // Zero-cost executor: returns the thought back as confirmation
+    async executor(args) {
+        const thought = asNonEmptyString(args.thought);
+        if (!thought) return "No thought provided.";
+        // The think tool doesn't DO anything — it just gives the model
+        // a place to reason. Return a brief acknowledgment.
+        return `[Thought recorded] Continue with your next action based on this reasoning.`;
+    },
+});
+
+// ── Task Plan — structured planning tool ────────────────────────────────────
+
+registerSkill({
+    name: "task_plan",
+    description:
+        "Create a structured numbered plan before executing a multi-step task. This helps you stay organized and ensures you don't miss steps. Call this ONCE at the start of a complex task.",
+    category: "reasoning",
+    toolDefinition: {
+        type: "function",
+        name: "task_plan",
+        description:
+            "Create a numbered execution plan for a multi-step task. Call this before you start using other tools. The plan helps you stay organized.",
+        parameters: {
+            type: "object",
+            properties: {
+                goal: {
+                    type: "string",
+                    description: "The overall goal you are trying to accomplish",
+                },
+                steps: {
+                    type: "string",
+                    description:
+                        "A numbered list of steps you will take to accomplish the goal (e.g., '1. Search for X\\n2. Scrape top results\\n3. Analyze findings\\n4. Compile report')",
+                },
+                estimated_rounds: {
+                    type: "number",
+                    description:
+                        "Estimated number of tool rounds this will take (1-15)",
+                },
+            },
+            required: ["goal", "steps"],
+        },
+    },
+    async executor(args) {
+        const goal = asNonEmptyString(args.goal);
+        const steps = asNonEmptyString(args.steps);
+        if (!goal || !steps)
+            return "Plan must include a goal and numbered steps.";
+        return `[Plan created] Goal: ${goal}\n\nSteps:\n${steps}\n\nProceed with step 1.`;
     },
 });
