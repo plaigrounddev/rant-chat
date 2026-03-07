@@ -33,8 +33,20 @@ export default defineSchema({
             v.literal("tool"),
         ),
         content: v.string(),
-        toolCalls: v.optional(v.any()),
-        toolResults: v.optional(v.any()),
+        toolCalls: v.optional(v.array(v.object({
+            id: v.string(),
+            type: v.literal("function"),
+            function: v.object({
+                name: v.string(),
+                arguments: v.string(),
+            }),
+            status: v.optional(v.string()),
+            result: v.optional(v.string()),
+        }))),
+        toolResults: v.optional(v.array(v.object({
+            call_id: v.string(),
+            output: v.string(),
+        }))),
         responseId: v.optional(v.string()),
         createdAt: v.number(),
     })
