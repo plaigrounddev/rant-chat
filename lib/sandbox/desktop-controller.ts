@@ -68,6 +68,17 @@ export class DesktopController {
             timeoutMs = 10 * 60 * 1000,
         } = options;
 
+        // Tear down existing sandbox to prevent orphaned VMs
+        if (this.sandbox) {
+            try {
+                await this.sandbox.kill();
+            } catch (error: unknown) {
+                console.warn("[DesktopController] Failed to tear down previous sandbox:", error);
+            }
+            this.sandbox = null;
+            this.streamUrl = null;
+        }
+
         this.sandbox = await DesktopSandbox.create({
             resolution,
             dpi,

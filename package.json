@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.21",
     "@ai-sdk/rsc": "^2.0.57",
+    "@bufbuild/protobuf": "^2.11.0",
     "@clerk/nextjs": "^7.0.1",
     "@composio/core": "^0.6.4",
     "@composio/openai": "^0.6.4",

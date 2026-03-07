@@ -105,16 +105,9 @@ export class CodeExecutor {
 
                 // Collect stdout/stderr from execution logs
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const logs = result.logs as any as Array<{ type: string; line: string }>;
-                stdout = logs
-                    .filter((log: { type: string }) => log.type === "stdout")
-                    .map((log: { line: string }) => log.line)
-                    .join("\n");
-
-                stderr = logs
-                    .filter((log: { type: string }) => log.type === "stderr")
-                    .map((log: { line: string }) => log.line)
-                    .join("\n");
+                const logs = result.logs as any;
+                stdout = (logs?.stdout ?? []).join("\n");
+                stderr = (logs?.stderr ?? []).join("\n");
 
                 // Check for errors
                 if (result.error) {
@@ -222,8 +215,12 @@ export class CodeExecutor {
                     break;
                 case "bash":
                     // For bash, export as environment variables
+                    // Use single quotes and escape embedded single quotes to prevent injection
+                    const escaped = typeof value === "string"
+                        ? value.replace(/'/g, "'\\''")
+                        : JSON.stringify(value).replace(/'/g, "'\\''");
                     assignments.push(
-                        `export ${key}=${typeof value === "string" ? `"${value}"` : serialized}`
+                        `export ${key}='${escaped}'`
                     );
                     break;
             }

@@ -8,6 +8,18 @@
 import type { Sandbox } from "@e2b/code-interpreter";
 
 // ---------------------------------------------------------------------------
+// Shell Escaping Utility
+// ---------------------------------------------------------------------------
+
+/**
+ * Escape a string for safe use in shell commands.
+ * Uses single quotes and escapes embedded single quotes.
+ */
+function shellEscape(str: string): string {
+    return "'" + str.replace(/'/g, "'\\''") + "'";
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -81,7 +93,7 @@ export class FileSystemManager {
             // Ensure parent directory exists
             const dir = path.substring(0, path.lastIndexOf("/"));
             if (dir) {
-                await this.sandbox.commands.run(`mkdir -p "${dir}"`);
+                await this.sandbox.commands.run(`mkdir -p ${shellEscape(dir)}`);
             }
 
             await this.sandbox.files.write(path, content);
@@ -99,7 +111,7 @@ export class FileSystemManager {
     async listDirectory(path: string): Promise<FileInfo[]> {
         try {
             const result = await this.sandbox.commands.run(
-                `ls -la "${path}" | tail -n +2`
+                `ls -la ${shellEscape(path)} | tail -n +2`
             );
 
             if (result.exitCode !== 0) {
@@ -141,7 +153,7 @@ export class FileSystemManager {
     async delete(path: string, recursive = false): Promise<void> {
         try {
             const flag = recursive ? "-rf" : "-f";
-            const result = await this.sandbox.commands.run(`rm ${flag} "${path}"`);
+            const result = await this.sandbox.commands.run(`rm ${flag} ${shellEscape(path)}`);
             if (result.exitCode !== 0) {
                 throw new Error(result.stderr);
             }
@@ -157,7 +169,7 @@ export class FileSystemManager {
      * Check if a file or directory exists.
      */
     async exists(path: string): Promise<boolean> {
-        const result = await this.sandbox.commands.run(`test -e "${path}" && echo "yes" || echo "no"`);
+        const result = await this.sandbox.commands.run(`test -e ${shellEscape(path)} && echo "yes" || echo "no"`);
         return result.stdout.trim() === "yes";
     }
 
@@ -170,7 +182,7 @@ export class FileSystemManager {
     ): Promise<string[]> {
         try {
             const result = await this.sandbox.commands.run(
-                `find "${directory}" -name "${pattern}" -type f 2>/dev/null | head -50`
+                `find ${shellEscape(directory)} -name ${shellEscape(pattern)} -type f 2>/dev/null | head -50`
             );
             if (result.exitCode !== 0) return [];
             return result.stdout.trim().split("\n").filter(Boolean);
@@ -186,9 +198,9 @@ export class FileSystemManager {
         outputPath: string,
         sourcePaths: string[]
     ): Promise<void> {
-        const sources = sourcePaths.map((s) => `"${s}"`).join(" ");
+        const sources = sourcePaths.map((s) => shellEscape(s)).join(" ");
         const result = await this.sandbox.commands.run(
-            `zip -r "${outputPath}" ${sources}`
+            `zip -r ${shellEscape(outputPath)} ${sources}`
         );
         if (result.exitCode !== 0) {
             throw new Error(`Failed to create archive: ${result.stderr}`);
@@ -199,9 +211,9 @@ export class FileSystemManager {
      * Extract a zip archive.
      */
     async extractArchive(archivePath: string, destDir: string): Promise<void> {
-        await this.sandbox.commands.run(`mkdir -p "${destDir}"`);
+        await this.sandbox.commands.run(`mkdir -p ${shellEscape(destDir)}`);
         const result = await this.sandbox.commands.run(
-            `unzip -o "${archivePath}" -d "${destDir}"`
+            `unzip -o ${shellEscape(archivePath)} -d ${shellEscape(destDir)}`
         );
         if (result.exitCode !== 0) {
             throw new Error(`Failed to extract archive: ${result.stderr}`);
@@ -213,7 +225,7 @@ export class FileSystemManager {
      */
     async getFileInfo(path: string): Promise<FileInfo & { size: number }> {
         const result = await this.sandbox.commands.run(
-            `stat -c '%s %F' "${path}" 2>/dev/null || stat -f '%z %HT' "${path}"`
+            `stat -c '%s %F' ${shellEscape(path)} 2>/dev/null || stat -f '%z %HT' ${shellEscape(path)}`
         );
         if (result.exitCode !== 0) {
             throw new Error(`File not found: ${path}`);

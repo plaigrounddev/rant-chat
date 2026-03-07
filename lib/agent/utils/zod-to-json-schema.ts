@@ -52,8 +52,11 @@ export function zodToJsonSchema(schema: ZodType): JsonSchema {
         return { type: "object", properties, required };
     }
 
-    // Fallback for non-object schemas (wrap in empty object)
-    return { type: "object", properties: {}, required: [] };
+    // Throw for unsupported top-level types to fail fast
+    const typeName = (def.typeName as string) ?? "unknown";
+    throw new Error(
+        `zodToJsonSchema: unsupported top-level Zod type "${typeName}". Only ZodObject is supported. Wrap your schema in z.object().`
+    );
 }
 
 function zodTypeToJsonSchema(schema: ZodType): JsonSchemaProperty {

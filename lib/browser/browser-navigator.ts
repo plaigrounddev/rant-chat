@@ -136,11 +136,11 @@ export class BrowserNavigator {
      */
     async goBack(): Promise<NavigateResult> {
         const page = this.ensurePage();
-        await page.goBack({ waitUntil: "domcontentloaded" });
+        const response = await page.goBack({ waitUntil: "domcontentloaded" });
         return {
             url: page.url(),
             title: await page.title(),
-            status: 200,
+            status: response?.status() ?? 0,
         };
     }
 
@@ -149,11 +149,11 @@ export class BrowserNavigator {
      */
     async goForward(): Promise<NavigateResult> {
         const page = this.ensurePage();
-        await page.goForward({ waitUntil: "domcontentloaded" });
+        const response = await page.goForward({ waitUntil: "domcontentloaded" });
         return {
             url: page.url(),
             title: await page.title(),
-            status: 200,
+            status: response?.status() ?? 0,
         };
     }
 
@@ -235,21 +235,22 @@ export class BrowserNavigator {
      */
     async fillForm(fields: FormField[]): Promise<void> {
         const page = this.ensurePage();
+        const timeout = 10000;
         for (const field of fields) {
             switch (field.type) {
                 case "select":
-                    await page.selectOption(field.selector, field.value);
+                    await page.selectOption(field.selector, field.value, { timeout });
                     break;
                 case "checkbox":
                 case "radio":
                     if (field.value === "true" || field.value === "checked") {
-                        await page.check(field.selector);
+                        await page.check(field.selector, { timeout });
                     } else {
-                        await page.uncheck(field.selector);
+                        await page.uncheck(field.selector, { timeout });
                     }
                     break;
                 default:
-                    await page.fill(field.selector, field.value);
+                    await page.fill(field.selector, field.value, { timeout });
             }
         }
     }

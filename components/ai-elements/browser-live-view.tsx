@@ -65,6 +65,7 @@ export function BrowserLiveView({
                         <button
                             onClick={onClose}
                             className="text-white/50 hover:text-red-400 transition-colors"
+                            aria-label="Close browser view"
                         >
                             ✕
                         </button>
@@ -92,6 +93,7 @@ export function BrowserLiveView({
                 <iframe
                     src={streamUrl}
                     className="w-full h-full border-0"
+                    title={title}
                     allow="camera; microphone; clipboard-write"
                     sandbox={readOnly ? "allow-scripts allow-same-origin" : "allow-scripts allow-same-origin allow-forms allow-popups"}
                 />

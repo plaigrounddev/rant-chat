@@ -38,6 +38,8 @@ export interface ProcessInfo {
 // ---------------------------------------------------------------------------
 
 export class TerminalManager {
+    private persistentEnvs: Map<string, string> = new Map();
+
     constructor(private sandbox: Sandbox) { }
 
     /**
@@ -51,10 +53,19 @@ export class TerminalManager {
         const timeoutMs = options?.timeoutMs ?? 30000;
 
         try {
+            // Prepend persistent env exports
+            let envPrefix = "";
+            if (this.persistentEnvs.size > 0) {
+                const exports = Array.from(this.persistentEnvs.entries())
+                    .map(([k, v]) => `export ${k}='${v.replace(/'/g, "'\\''")}'`)
+                    .join(" && ");
+                envPrefix = exports + " && ";
+            }
+
             // Wrap with cd if cwd is specified
             const fullCommand = options?.cwd
-                ? `cd "${options.cwd}" && ${command}`
-                : command;
+                ? `${envPrefix}cd "${options.cwd}" && ${command}`
+                : `${envPrefix}${command}`;
 
             const result = await this.sandbox.commands.run(fullCommand, {
                 timeoutMs,
@@ -192,12 +203,14 @@ export class TerminalManager {
     }
 
     /**
-     * Set environment variables in the sandbox.
+     * Set environment variables that persist across commands.
+     * Stored locally and prepended to each command execution.
      */
     async setEnvironmentVariable(
         key: string,
         value: string
     ): Promise<void> {
-        await this.runCommand(`export ${key}="${value}"`);
+        this.persistentEnvs.set(key, value);
+        console.log(`[TerminalManager] Environment variable set: ${key}`);
     }
 }

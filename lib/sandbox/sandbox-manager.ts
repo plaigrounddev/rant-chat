@@ -162,8 +162,8 @@ export class SandboxManager {
             this.activeSandboxes.delete(id);
             console.log(`[SandboxManager] Sandbox ${id} terminated`);
         } catch (error) {
+            // Don't remove from tracking on failure so callers can retry
             console.error(`[SandboxManager] Failed to kill sandbox ${id}:`, error);
-            this.activeSandboxes.delete(id);
         }
     }
 
@@ -202,13 +202,14 @@ export class SandboxManager {
     async getOrCreateSandbox(
         options: SandboxCreateOptions = {}
     ): Promise<SandboxInstance> {
-        // Look for an existing running sandbox
+        // Look for an existing running sandbox that matches the requested template
+        const requestedTemplate = options.template ?? "base";
         const existing = Array.from(this.activeSandboxes.values()).find(
-            (s) => s.status === "running"
+            (s) => s.status === "running" && s.template === requestedTemplate
         );
 
         if (existing) {
-            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id}`);
+            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id} (template: ${existing.template})`);
             return existing;
         }
 
