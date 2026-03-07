@@ -268,7 +268,10 @@ export function useAgentChat() {
                     break;
 
                 case "text_done":
-                    currentContent = data.text as string;
+                    // Don't replace accumulated content with single-response text.
+                    // text_delta already builds up currentContent correctly.
+                    // Just strip the internal [TASK_COMPLETE] marker if present.
+                    currentContent = currentContent.replace(/\[TASK_COMPLETE\]/g, "").trimEnd();
                     updateAssistant({ content: currentContent });
                     break;
 

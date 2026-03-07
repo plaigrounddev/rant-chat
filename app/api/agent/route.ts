@@ -153,6 +153,8 @@ async function runAgentLoop(
         let hasUsedAnyTool = false;
         let continuationRounds = 0;
 
+        console.log(`[AGENT] ▶ New run | model=${MODEL} | maxRounds=${MAX_TOOL_ROUNDS}`);
+
         // Track function calls being streamed
         const pendingFunctionCalls: Map<string, FunctionCall> = new Map();
 
@@ -351,6 +353,7 @@ async function runAgentLoop(
                             toolRound++;
                             hasUsedAnyTool = true;
                             taskStore.incrementToolRound(taskRun.id);
+                            console.log(`[AGENT] 🔧 Tool round ${toolRound} | ${functionCallOutputs.length} tool(s): ${functionCallOutputs.map((fc: { name: string }) => fc.name).join(', ')}`);
                             sendSSE("status", {
                                 type: "executing_tools",
                                 round: toolRound,
@@ -393,6 +396,7 @@ async function runAgentLoop(
                                         // Note: think tool content is NOT sent to the client
                                         // to avoid leaking internal reasoning
                                         if (fc.name === "think") {
+                                            console.log(`[AGENT] 🤔 Think: ${(args.thought as string || '').slice(0, 150)}...`);
                                             sendSSE("agent_thinking", {
                                                 call_id: fc.call_id,
                                                 status: "thinking",
@@ -471,6 +475,7 @@ async function runAgentLoop(
 
                             if (isExplicitDone || isSimpleQA) {
                                 // Genuine completion — task is done
+                                console.log(`[AGENT] ✅ Complete | reason=${isExplicitDone ? 'TASK_COMPLETE' : 'simple_qa'} | toolRounds=${toolRound} | continuations=${continuationRounds}`);
                                 taskStore.completeRun(taskRun.id, "completed");
                                 sendSSE("task_completed", {
                                     taskId: taskRun.id,
@@ -483,6 +488,7 @@ async function runAgentLoop(
                                 close();
                             } else if (isMaxedOut) {
                                 // Hit the round limit — partial work, not a success
+                                console.log(`[AGENT] ⚠️ Exhausted | toolRounds=${toolRound} | continuations=${continuationRounds}`);
                                 taskStore.completeRun(taskRun.id, "exhausted");
                                 sendSSE("task_exhausted", {
                                     taskId: taskRun.id,
@@ -498,6 +504,7 @@ async function runAgentLoop(
                             } else {
                                 // Agent paused with text but hasn't finished — push it to keep going
                                 continuationRounds++;
+                                console.log(`[AGENT] 🔄 Continuation ${continuationRounds} | toolRound=${toolRound} | textLen=${lastText.length} | lastText="${lastText.slice(0, 100)}..."`);
                                 sendSSE("status", { type: "thinking" });
 
                                 // Use instructions (not a fake user message) for continuation nudge
