@@ -8,7 +8,7 @@
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type TaskStepStatus = "running" | "completed" | "error";
-export type TaskRunStatus = "running" | "completed" | "error";
+export type TaskRunStatus = "running" | "completed" | "exhausted" | "error";
 
 export interface TaskStep {
     id: string;

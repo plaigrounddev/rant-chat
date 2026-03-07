@@ -150,6 +150,8 @@ async function runAgentLoop(
 
         let currentResponseId: string | null = null;
         let toolRound = 0;
+        let hasUsedAnyTool = false;
+        let continuationRounds = 0;
 
         // Track function calls being streamed
         const pendingFunctionCalls: Map<string, FunctionCall> = new Map();
@@ -226,6 +228,7 @@ async function runAgentLoop(
                                 });
                             }
                         } else if (event.item?.type === "web_search_call") {
+                            hasUsedAnyTool = true;
                             sendSSE("tool_start", {
                                 id: event.item.id,
                                 name: "web_search",
@@ -346,6 +349,7 @@ async function runAgentLoop(
                             toolRound < MAX_TOOL_ROUNDS
                         ) {
                             toolRound++;
+                            hasUsedAnyTool = true;
                             taskStore.incrementToolRound(taskRun.id);
                             sendSSE("status", {
                                 type: "executing_tools",
@@ -386,11 +390,12 @@ async function runAgentLoop(
                                         }
 
                                         // Stream special SSE events for reasoning tools
+                                        // Note: think tool content is NOT sent to the client
+                                        // to avoid leaking internal reasoning
                                         if (fc.name === "think") {
-                                            const thought = args.thought as string || "";
                                             sendSSE("agent_thinking", {
                                                 call_id: fc.call_id,
-                                                thought,
+                                                status: "thinking",
                                             });
                                         } else if (fc.name === "task_plan") {
                                             sendSSE("agent_plan", {
@@ -458,15 +463,14 @@ async function runAgentLoop(
 
                             // The agent is truly done when:
                             // 1. It signals [TASK_COMPLETE] explicitly, OR
-                            // 2. It has never used tools (simple Q&A), OR
-                            // 3. It has hit the tool round limit
+                            // 2. It has never used any tools (simple Q&A), OR
+                            // 3. It has hit the tool round / continuation limit
                             const isExplicitDone = lastText.includes("[TASK_COMPLETE]");
-                            const isSimpleQA = toolRound === 0;
-                            const isMaxedOut = toolRound >= MAX_TOOL_ROUNDS;
+                            const isSimpleQA = !hasUsedAnyTool;
+                            const isMaxedOut = toolRound >= MAX_TOOL_ROUNDS || continuationRounds >= MAX_TOOL_ROUNDS;
 
-                            if (isExplicitDone || isSimpleQA || isMaxedOut) {
-                                // Strip the [TASK_COMPLETE] marker from the final message
-                                // (it's an internal signal, not for the user)
+                            if (isExplicitDone || isSimpleQA) {
+                                // Genuine completion — task is done
                                 taskStore.completeRun(taskRun.id, "completed");
                                 sendSSE("task_completed", {
                                     taskId: taskRun.id,
@@ -477,30 +481,35 @@ async function runAgentLoop(
                                 });
                                 ws!.close();
                                 close();
+                            } else if (isMaxedOut) {
+                                // Hit the round limit — partial work, not a success
+                                taskStore.completeRun(taskRun.id, "exhausted");
+                                sendSSE("task_exhausted", {
+                                    taskId: taskRun.id,
+                                    toolRounds: toolRound,
+                                    continuationRounds,
+                                    reason: "Maximum tool/continuation rounds reached",
+                                });
+                                sendSSE("done", {
+                                    responseId: currentResponseId,
+                                });
+                                ws!.close();
+                                close();
                             } else {
                                 // Agent paused with text but hasn't finished — push it to keep going
-                                toolRound++;
+                                continuationRounds++;
                                 sendSSE("status", { type: "thinking" });
 
+                                // Use instructions (not a fake user message) for continuation nudge
+                                const continuationInstructions = `${systemInstructions}\n\n[FRAMEWORK CONTINUATION]: Continue working. Use your tools and keep making progress. If you're completely done, include [TASK_COMPLETE] at the end of your final response.`;
                                 const agentTools = [...getAgentTools(), ...composioTools];
                                 const continuationRequest = {
                                     type: "response.create",
                                     model: MODEL,
-                                    instructions: systemInstructions,
+                                    instructions: continuationInstructions,
                                     tools: agentTools,
                                     previous_response_id: currentResponseId,
-                                    input: [
-                                        {
-                                            type: "message",
-                                            role: "user",
-                                            content: [
-                                                {
-                                                    type: "input_text",
-                                                    text: "Continue working. Don't stop to ask me questions — use your tools and keep making progress. If you're completely done, include [TASK_COMPLETE] at the end of your final response.",
-                                                },
-                                            ],
-                                        },
-                                    ],
+                                    input: [],
                                 };
                                 ws!.send(JSON.stringify(continuationRequest));
                             }
