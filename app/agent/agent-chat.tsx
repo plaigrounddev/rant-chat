@@ -37,6 +37,7 @@ import {
     BoxIcon,
     TerminalIcon,
     ExternalLinkIcon,
+    PlayIcon,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 
@@ -229,6 +230,9 @@ function ToolCallCard({
         update_memory: <BrainIcon className="size-4" />,
         delete_memory: <BrainIcon className="size-4" />,
         discover_integration: <SearchIcon className="size-4" />,
+        run_workflow: <PlayIcon className="size-4" />,
+        check_workflow: <SearchIcon className="size-4" />,
+        cancel_workflow: <AlertCircleIcon className="size-4" />,
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: <SearchIcon className="size-4" />,
         COMPOSIO_MANAGE_CONNECTIONS: <PlugIcon className="size-4" />,
@@ -247,6 +251,9 @@ function ToolCallCard({
         update_memory: "Updating Memory",
         delete_memory: "Deleting Memory",
         discover_integration: "Discovering Integration",
+        run_workflow: "Running Workflow",
+        check_workflow: "Checking Workflow",
+        cancel_workflow: "Cancelling Workflow",
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: "Searching Tools",
         COMPOSIO_MANAGE_CONNECTIONS: "Managing Connection",

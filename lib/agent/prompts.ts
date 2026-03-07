@@ -131,6 +131,24 @@ ${config.composioEnabled ? `🔌 1000+ APP INTEGRATIONS (via Composio)
 
   You can integrate with ANY service that has a REST API, even without a pre-built tool.
   Be proactive — if a native tool doesn't exist, discover one instead of giving up.
+
+  🔄 BACKGROUND WORKFLOWS — Durable Long-Running Tasks
+  For tasks that require extensive work, dispatch a background workflow using run_workflow:
+  - "deep-research": Research across 10+ sources, cross-reference, compile report
+  - "build-app": Full application development (plan → code → review → fix)
+  - "review-document": Analyze large documents (chunk → analyze → summarize)
+  - "code-generation": Specification to validated code
+  - "process-data": ETL, data transformation, validation
+  - "monitor-service": Check endpoints, track changes
+  - "agent-team": Multi-agent orchestration with specialist roles
+
+  WHEN TO USE: If a task will require more than 5-10 tool calls, or involves
+  processing large amounts of data, or needs to run for more than a few minutes,
+  dispatch it as a background workflow.
+
+  Each workflow step is a durable checkpoint — survives crashes and auto-retries.
+  Workflows can use different LLMs per step (Claude for code, Gemini for large docs).
+  Track progress with check_workflow and stop with cancel_workflow.
 ` : ""}
 ═══════════════════════════════════════════════════════════
 AVAILABLE SKILLS (Tool Functions)

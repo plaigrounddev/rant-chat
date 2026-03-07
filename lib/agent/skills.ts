@@ -472,3 +472,197 @@ registerSkill({
         return JSON.stringify(report, null, 2);
     },
 });
+
+// ── Background Workflows — Inngest Durable Task Dispatch ─────────────────
+
+import { inngest } from "../inngest/client";
+import { workflowState } from "../inngest/state";
+
+const WORKFLOW_TYPES = [
+    "deep-research",
+    "build-app",
+    "review-document",
+    "code-generation",
+    "process-data",
+    "monitor-service",
+    "agent-team",
+] as const;
+
+registerSkill({
+    name: "run_workflow",
+    description:
+        "Dispatch a long-running background workflow. Use this for tasks that require extensive work: deep research across many sources, building full applications, reviewing large documents, processing data, monitoring services, or coordinating a team of specialist agents. The workflow runs durably in the background — it survives crashes, auto-retries on failure, and checkpoints every step.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "run_workflow",
+        description:
+            "Dispatch a durable background workflow. Returns a run ID for tracking. Available types: deep-research, build-app, review-document, code-generation, process-data, monitor-service, agent-team.",
+        parameters: {
+            type: "object",
+            properties: {
+                workflow_type: {
+                    type: "string",
+                    description:
+                        "Type of workflow: 'deep-research' (extensive web research), 'build-app' (full application development), 'review-document' (analyze large docs), 'code-generation' (spec to code), 'process-data' (ETL/transform), 'monitor-service' (endpoint monitoring), 'agent-team' (multi-agent orchestration)",
+                    enum: WORKFLOW_TYPES,
+                },
+                instructions: {
+                    type: "string",
+                    description:
+                        "Detailed instructions for the workflow. Be specific about what you want accomplished.",
+                },
+                model_preference: {
+                    type: "string",
+                    description:
+                        "Preferred model provider: 'auto' (select best for each step), 'openai', 'anthropic' (Claude), 'google' (Gemini). Defaults to 'auto'.",
+                    enum: ["auto", "openai", "anthropic", "google"],
+                },
+                context: {
+                    type: "object",
+                    description:
+                        "Additional context: { url, documentContent, language, framework, inputData, teamRoles }",
+                },
+            },
+            required: ["workflow_type", "instructions"],
+        },
+    },
+    executor: async (args) => {
+        const workflowType = typeof args.workflow_type === "string" ? args.workflow_type : "";
+        const instructions = typeof args.instructions === "string" ? args.instructions : "";
+        const modelPreference = typeof args.model_preference === "string" ? args.model_preference : "auto";
+        const context = (args.context && typeof args.context === "object") ? args.context as Record<string, unknown> : {};
+
+        if (!workflowType || !WORKFLOW_TYPES.includes(workflowType as typeof WORKFLOW_TYPES[number])) {
+            return JSON.stringify({ error: `Invalid workflow type. Must be one of: ${WORKFLOW_TYPES.join(", ")}` });
+        }
+        if (!instructions) {
+            return JSON.stringify({ error: "Instructions are required" });
+        }
+
+        const runId = workflowState.generateRunId();
+
+        try {
+            await inngest.send({
+                name: `workflow/${workflowType}` as `workflow/${string}`,
+                data: {
+                    runId,
+                    instructions,
+                    modelPreference,
+                    notifyWhenDone: true,
+                    context,
+                },
+            });
+
+            return JSON.stringify({
+                success: true,
+                runId,
+                workflowType,
+                message: `Workflow dispatched. Track with: check_workflow("${runId}")`,
+            });
+        } catch (error) {
+            return JSON.stringify({
+                error: `Failed to dispatch workflow: ${error}`,
+                hint: "Make sure the Inngest dev server is running: npx inngest-cli@latest dev",
+            });
+        }
+    },
+});
+
+registerSkill({
+    name: "check_workflow",
+    description:
+        "Check the status of a running or completed background workflow. Returns progress, step statuses, and results.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "check_workflow",
+        description:
+            "Check the status of a background workflow by its run ID.",
+        parameters: {
+            type: "object",
+            properties: {
+                run_id: {
+                    type: "string",
+                    description: "The workflow run ID (e.g., 'wf_abc123_def456')",
+                },
+            },
+            required: ["run_id"],
+        },
+    },
+    executor: async (args) => {
+        const runId = typeof args.run_id === "string" ? args.run_id.trim() : "";
+        if (!runId) {
+            // List all workflows if no run ID
+            const all = workflowState.listAll();
+            return JSON.stringify({
+                workflows: all.map((w) => ({
+                    runId: w.runId,
+                    type: w.workflowType,
+                    status: w.status,
+                    started: w.startedAt,
+                    completed: w.completedAt,
+                })),
+            });
+        }
+
+        const state = workflowState.get(runId);
+        if (!state) {
+            return JSON.stringify({ error: "Workflow not found", runId });
+        }
+
+        return JSON.stringify({
+            runId: state.runId,
+            type: state.workflowType,
+            status: state.status,
+            started: state.startedAt,
+            completed: state.completedAt,
+            steps: state.steps.map((s) => ({
+                name: s.name,
+                status: s.status,
+                result: s.result,
+            })),
+            result: state.result ? state.result.substring(0, 2000) : undefined,
+            error: state.error,
+        });
+    },
+});
+
+registerSkill({
+    name: "cancel_workflow",
+    description:
+        "Cancel a running background workflow.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "cancel_workflow",
+        description: "Cancel a running background workflow by its run ID.",
+        parameters: {
+            type: "object",
+            properties: {
+                run_id: {
+                    type: "string",
+                    description: "The workflow run ID to cancel",
+                },
+            },
+            required: ["run_id"],
+        },
+    },
+    executor: async (args) => {
+        const runId = typeof args.run_id === "string" ? args.run_id.trim() : "";
+        if (!runId) return JSON.stringify({ error: "run_id is required" });
+
+        const cancelled = workflowState.cancel(runId);
+        if (!cancelled) {
+            return JSON.stringify({
+                error: "Could not cancel. Workflow may not exist or is already completed.",
+                runId,
+            });
+        }
+
+        return JSON.stringify({
+            success: true,
+            message: `Workflow "${runId}" cancelled`,
+        });
+    },
+});
