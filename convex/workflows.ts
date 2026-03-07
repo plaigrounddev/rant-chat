@@ -1,15 +1,14 @@
 // convex/workflows.ts
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
-
 /**
- * Create a new workflow run
+ * Create a new workflow run — authenticated, idempotent.
+ * Derives userId from auth context. Checks for duplicate runId.
  */
 export const create = mutation({
     args: {
         runId: v.string(),
-        userId: v.id("users"),
         threadId: v.optional(v.id("threads")),
         workflowType: v.string(),
         instructions: v.string(),
@@ -17,9 +16,34 @@ export const create = mutation({
         modelPreference: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        // Require authentication
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!user) throw new Error("User not found");
+
+        // Verify thread ownership if provided
+        if (args.threadId) {
+            const thread = await ctx.db.get(args.threadId);
+            if (!thread || thread.userId !== user._id) {
+                throw new Error("Thread not found");
+            }
+        }
+
+        // Idempotency: check for existing runId
+        const existing = await ctx.db
+            .query("workflows")
+            .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
+            .unique();
+        if (existing) return existing._id;
+
         return await ctx.db.insert("workflows", {
             runId: args.runId,
-            userId: args.userId,
+            userId: user._id,
             threadId: args.threadId,
             workflowType: args.workflowType,
             instructions: args.instructions,
@@ -35,10 +59,10 @@ export const create = mutation({
 });
 
 /**
- * Update a workflow step's status.
- * Clients subscribed to this workflow will see real-time progress.
+ * Update a workflow step's status — INTERNAL ONLY.
+ * Called by Inngest via the convex bridge.
  */
-export const updateStep = mutation({
+export const updateStep = internalMutation({
     args: {
         runId: v.string(),
         stepId: v.string(),
@@ -74,11 +98,10 @@ export const updateStep = mutation({
 });
 
 /**
- * Mark workflow as completed and announce result to thread.
- * THIS IS THE KEY — writes the result as a message to the thread,
- * and Convex reactivity auto-pushes it to the client.
+ * Mark workflow as completed and announce result to thread — INTERNAL ONLY.
+ * Guarded against duplicate delivery: only runs if status is still "running".
  */
-export const complete = mutation({
+export const complete = internalMutation({
     args: {
         runId: v.string(),
         result: v.string(),
@@ -89,6 +112,9 @@ export const complete = mutation({
             .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
             .unique();
         if (!workflow) return;
+
+        // Guard: only complete if still running (prevents duplicate delivery)
+        if (workflow.status !== "running") return;
 
         // Update workflow status
         await ctx.db.patch(workflow._id, {
@@ -114,9 +140,10 @@ export const complete = mutation({
 });
 
 /**
- * Mark workflow as failed
+ * Mark workflow as failed — INTERNAL ONLY.
+ * Guarded against duplicate delivery.
  */
-export const fail = mutation({
+export const fail = internalMutation({
     args: {
         runId: v.string(),
         error: v.string(),
@@ -127,6 +154,9 @@ export const fail = mutation({
             .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
             .unique();
         if (!workflow) return;
+
+        // Guard: only fail if still running
+        if (workflow.status !== "running") return;
 
         await ctx.db.patch(workflow._id, {
             status: "failed",
@@ -141,20 +171,37 @@ export const fail = mutation({
                 content: `❌ **Workflow Failed** (${workflow.workflowType})\n\nError: ${args.error}`,
                 createdAt: Date.now(),
             });
+
+            // Update thread lastMessageAt (was missing — CodeRabbit catch)
+            await ctx.db.patch(workflow.threadId, {
+                lastMessageAt: Date.now(),
+            });
         }
     },
 });
 
 /**
- * Get workflow by run ID (reactive — client sees live step updates)
+ * Get workflow by run ID — authenticated with ownership check
  */
 export const getByRunId = query({
     args: { runId: v.string() },
     handler: async (ctx, args) => {
-        return await ctx.db
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) return null;
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!user) return null;
+
+        const workflow = await ctx.db
             .query("workflows")
             .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
             .unique();
+        if (!workflow || workflow.userId !== user._id) return null;
+
+        return workflow;
     },
 });
 
@@ -182,16 +229,25 @@ export const listForUser = query({
 });
 
 /**
- * Cancel a running workflow
+ * Cancel a running workflow — authenticated with ownership check
  */
 export const cancel = mutation({
     args: { runId: v.string() },
     handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!user) return false;
+
         const workflow = await ctx.db
             .query("workflows")
             .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
             .unique();
-        if (!workflow || workflow.status !== "running") return false;
+        if (!workflow || workflow.userId !== user._id || workflow.status !== "running") return false;
 
         await ctx.db.patch(workflow._id, {
             status: "cancelled",

@@ -1,12 +1,13 @@
 // convex/taskQueue.ts
-import { mutation, query, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
- * Add a task to the autonomous queue.
- * The heartbeat system will pick up pending tasks and dispatch them.
+ * Enqueue a task — INTERNAL ONLY.
+ * Only callable server-side. Prevents arbitrary users from
+ * enqueuing tasks for other users.
  */
-export const enqueue = mutation({
+export const enqueue = internalMutation({
     args: {
         userId: v.id("users"),
         threadId: v.optional(v.id("threads")),
@@ -28,63 +29,65 @@ export const enqueue = mutation({
 });
 
 /**
- * Get the next pending task — INTERNAL ONLY.
- * Only callable server-side (heartbeat system).
- * Prevents cross-tenant task leakage in multi-user scenarios.
+ * Atomically claim the next pending task — INTERNAL ONLY.
+ * Finds the next pending task and marks it as running in one operation,
+ * preventing race conditions where two workers claim the same task.
  */
-export const next = internalQuery({
+export const claimNext = internalMutation({
     args: {
         userId: v.optional(v.id("users")),
+        workflowRunId: v.string(),
     },
     handler: async (ctx, args) => {
+        let task;
         if (args.userId) {
-            return await ctx.db
+            task = await ctx.db
                 .query("taskQueue")
                 .withIndex("by_user_pending", (q) =>
                     q.eq("userId", args.userId!).eq("status", "pending")
                 )
                 .order("asc")
                 .first();
+        } else {
+            task = await ctx.db
+                .query("taskQueue")
+                .withIndex("by_status", (q) => q.eq("status", "pending"))
+                .order("asc")
+                .first();
         }
-        return await ctx.db
-            .query("taskQueue")
-            .withIndex("by_status", (q) => q.eq("status", "pending"))
-            .order("asc")
-            .first();
-    },
-});
 
-/**
- * Mark a task as running
- */
-export const markRunning = mutation({
-    args: {
-        taskId: v.id("taskQueue"),
-        workflowRunId: v.string(),
-    },
-    handler: async (ctx, args) => {
-        await ctx.db.patch(args.taskId, {
+        if (!task) return null;
+
+        // Atomically mark as running
+        await ctx.db.patch(task._id, {
             status: "running",
             workflowRunId: args.workflowRunId,
         });
+
+        return task;
     },
 });
 
 /**
- * Mark task as completed
+ * Mark task as completed — INTERNAL ONLY.
  */
-export const markComplete = mutation({
+export const markComplete = internalMutation({
     args: { taskId: v.id("taskQueue") },
     handler: async (ctx, args) => {
+        const task = await ctx.db.get(args.taskId);
+        if (!task || task.status !== "running") return false;
+
         await ctx.db.patch(args.taskId, {
             status: "completed",
             completedAt: Date.now(),
         });
+        return true;
     },
 });
 
 /**
- * List pending tasks for a user
+ * List pending tasks for the current authenticated user.
+ * This is the only public query — safe because it's filtered by auth.
  */
 export const listPending = query({
     args: {},

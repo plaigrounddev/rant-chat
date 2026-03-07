@@ -3,31 +3,47 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
- * Add a message to a thread.
- * This is a reactive query — all subscribed clients will
- * automatically receive the new message via WebSocket.
+ * Send a message from an authenticated user.
+ * - Validates authentication
+ * - Verifies thread ownership
+ * - Forces role to "user" (privileged roles only via sendSystem)
  */
 export const send = mutation({
     args: {
         threadId: v.id("threads"),
-        role: v.union(
-            v.literal("user"),
-            v.literal("assistant"),
-            v.literal("system"),
-            v.literal("tool"),
-        ),
         content: v.string(),
         toolCalls: v.optional(v.any()),
         toolResults: v.optional(v.any()),
         responseId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+        // Require authentication
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        // Verify thread ownership
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!user) throw new Error("User not found");
+
+        const thread = await ctx.db.get(args.threadId);
+        if (!thread || thread.userId !== user._id) {
+            throw new Error("Thread not found");
+        }
+
+        // Force role to "user" — privileged roles only via sendSystem
         const messageId = await ctx.db.insert("messages", {
-            ...args,
+            threadId: args.threadId,
+            role: "user",
+            content: args.content,
+            toolCalls: args.toolCalls,
+            toolResults: args.toolResults,
+            responseId: args.responseId,
             createdAt: Date.now(),
         });
 
-        // Update thread's lastMessageAt for ordering
         await ctx.db.patch(args.threadId, {
             lastMessageAt: Date.now(),
         });
@@ -38,9 +54,8 @@ export const send = mutation({
 
 /**
  * List messages for a thread (chronological, paginated).
- * This is a REACTIVE query — the client auto-receives new messages
- * without polling. This is how workflow results arrive instantly.
- * Capped at 500 messages to prevent unbounded queries in long-running threads.
+ * - Validates authentication and thread ownership
+ * - Caps at 500 messages, fetches newest then reverses
  */
 export const list = query({
     args: {
@@ -48,11 +63,28 @@ export const list = query({
         limit: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
-        return await ctx.db
+        // Verify thread ownership
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) return [];
+
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!user) return [];
+
+        const thread = await ctx.db.get(args.threadId);
+        if (!thread || thread.userId !== user._id) return [];
+
+        // Cap limit at 500, fetch newest first then reverse
+        const maxLimit = Math.min(args.limit ?? 500, 500);
+        const messages = await ctx.db
             .query("messages")
             .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
-            .order("asc")
-            .take(args.limit ?? 500);
+            .order("desc")
+            .take(maxLimit);
+
+        return messages.reverse();
     },
 });
 
@@ -85,4 +117,3 @@ export const sendSystem = internalMutation({
         return messageId;
     },
 });
-

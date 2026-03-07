@@ -74,7 +74,7 @@ export const get = query({
 });
 
 /**
- * Update thread title (auto-titles from first message)
+ * Update thread title — with ownership check
  */
 export const updateTitle = mutation({
     args: {
@@ -82,6 +82,18 @@ export const updateTitle = mutation({
         title: v.string(),
     },
     handler: async (ctx, args) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) throw new Error("Not authenticated");
+
+        const thread = await ctx.db.get(args.threadId);
+        const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+            .unique();
+        if (!thread || !user || thread.userId !== user._id) {
+            throw new Error("Thread not found");
+        }
+
         await ctx.db.patch(args.threadId, { title: args.title });
     },
 });
