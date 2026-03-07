@@ -16,6 +16,14 @@ export const enqueue = internalMutation({
         priority: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
+        // Validate thread ownership if provided
+        if (args.threadId) {
+            const thread = await ctx.db.get(args.threadId);
+            if (!thread || thread.userId !== args.userId) {
+                throw new Error("Thread not found");
+            }
+        }
+
         return await ctx.db.insert("taskQueue", {
             userId: args.userId,
             threadId: args.threadId,
@@ -58,10 +66,11 @@ export const claimNext = internalMutation({
 
         if (!task) return null;
 
-        // Atomically mark as running
+        // Atomically mark as running with timestamp
         await ctx.db.patch(task._id, {
             status: "running",
             workflowRunId: args.workflowRunId,
+            startedAt: Date.now(),
         });
 
         // Return fresh task with updated status

@@ -91,6 +91,7 @@ export default defineSchema({
             v.literal("failed"),
         ),
         workflowRunId: v.optional(v.string()),
+        startedAt: v.optional(v.number()),
         createdAt: v.number(),
         completedAt: v.optional(v.number()),
     })
