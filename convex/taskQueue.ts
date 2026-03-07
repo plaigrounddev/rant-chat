@@ -64,7 +64,8 @@ export const claimNext = internalMutation({
             workflowRunId: args.workflowRunId,
         });
 
-        return task;
+        // Return fresh task with updated status
+        return await ctx.db.get(task._id);
     },
 });
 
@@ -107,6 +108,6 @@ export const listPending = query({
                 q.eq("userId", user._id).eq("status", "pending")
             )
             .order("asc")
-            .collect();
+            .take(100);
     },
 });

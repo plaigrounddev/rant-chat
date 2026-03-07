@@ -241,7 +241,7 @@ export const cancel = mutation({
             .query("users")
             .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
             .unique();
-        if (!user) return false;
+        if (!user) throw new Error("Not authenticated");
 
         const workflow = await ctx.db
             .query("workflows")

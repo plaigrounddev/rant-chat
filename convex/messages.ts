@@ -103,6 +103,10 @@ export const sendSystem = internalMutation({
         )),
     },
     handler: async (ctx, args) => {
+        // Verify thread exists (prevent orphan messages)
+        const thread = await ctx.db.get(args.threadId);
+        if (!thread) throw new Error("Thread not found");
+
         const messageId = await ctx.db.insert("messages", {
             threadId: args.threadId,
             role: args.role ?? "assistant",
