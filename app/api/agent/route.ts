@@ -429,17 +429,65 @@ async function runAgentLoop(
                             sendSSE("status", { type: "thinking" });
                             ws!.send(JSON.stringify(continuationRequest));
                         } else {
-                            // Final response — task complete
-                            taskStore.completeRun(taskRun.id, "completed");
-                            sendSSE("task_completed", {
-                                taskId: taskRun.id,
-                                toolRounds: toolRound,
-                            });
-                            sendSSE("done", {
-                                responseId: currentResponseId,
-                            });
-                            ws!.close();
-                            close();
+                            // ── Iterative loop: decide whether to continue or stop ──
+                            // Extract the text content from this response
+                            const textOutputs = response?.output?.filter(
+                                (o: { type: string }) => o.type === "message"
+                            ) || [];
+                            const lastText = textOutputs
+                                .flatMap((o: { content?: { text?: string }[] }) =>
+                                    (o.content || []).map((c) => c.text || "")
+                                )
+                                .join("");
+
+                            // The agent is truly done when:
+                            // 1. It signals [TASK_COMPLETE] explicitly, OR
+                            // 2. It has never used tools (simple Q&A), OR
+                            // 3. It has hit the tool round limit
+                            const isExplicitDone = lastText.includes("[TASK_COMPLETE]");
+                            const isSimpleQA = toolRound === 0;
+                            const isMaxedOut = toolRound >= MAX_TOOL_ROUNDS;
+
+                            if (isExplicitDone || isSimpleQA || isMaxedOut) {
+                                // Strip the [TASK_COMPLETE] marker from the final message
+                                // (it's an internal signal, not for the user)
+                                taskStore.completeRun(taskRun.id, "completed");
+                                sendSSE("task_completed", {
+                                    taskId: taskRun.id,
+                                    toolRounds: toolRound,
+                                });
+                                sendSSE("done", {
+                                    responseId: currentResponseId,
+                                });
+                                ws!.close();
+                                close();
+                            } else {
+                                // Agent paused with text but hasn't finished — push it to keep going
+                                toolRound++;
+                                sendSSE("status", { type: "thinking" });
+
+                                const agentTools = [...getAgentTools(), ...composioTools];
+                                const continuationRequest = {
+                                    type: "response.create",
+                                    model: MODEL,
+                                    instructions: systemInstructions,
+                                    tools: agentTools,
+                                    previous_response_id: currentResponseId,
+                                    input: [
+                                        {
+                                            type: "message",
+                                            role: "user",
+                                            content: [
+                                                {
+                                                    type: "input_text",
+                                                    text: "Continue working. Don't stop to ask me questions — use your tools and keep making progress. If you're completely done, include [TASK_COMPLETE] at the end of your final response.",
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                };
+                                ws!.send(JSON.stringify(continuationRequest));
+                            }
                         }
                         break;
                     }
