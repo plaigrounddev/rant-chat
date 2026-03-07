@@ -59,3 +59,18 @@
 |----------|----------|---------|
 | `OPENAI_API_KEY` | ✅ | OpenAI API access |
 | `COMPOSIO_API_KEY` | Optional | Composio 1000+ integrations |
+
+## Multi-Tenancy Readiness
+
+> **This app will become multi-tenant.** All data stores are designed with swappable backends.
+
+| Store | Current Backend | Multi-Tenant Migration |
+|-------|----------------|----------------------|
+| `secretsStore` | `data/secrets.json` | DB table with `user_id` + encryption per tenant |
+| `memoryStore` | `data/memories.json` | DB table with `user_id` |
+| `taskStore` | In-memory Map | DB table with `user_id` + task history |
+| Prompt templates | In-code array | DB table for custom per-user/org templates |
+| Settings | Not built yet | DB table with `user_id` |
+
+**Migration path**: The store interfaces (`.store()`, `.get()`, `.list()`, `.delete()`) stay the same. Swap the file I/O implementation for DB queries (e.g., Supabase, Postgres). No skill or prompt code changes needed.
+
