@@ -17,52 +17,52 @@ import { getAllSkills, type Skill } from "./skills";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface PromptConfig {
-    /** Override the agent's identity description */
-    identity?: string;
-    /** Additional context/personality directives */
-    context?: string;
-    /** Custom exit conditions */
-    exitConditions?: string[];
-    /** Whether Composio integrations are available */
-    composioEnabled?: boolean;
+  /** Override the agent's identity description */
+  identity?: string;
+  /** Additional context/personality directives */
+  context?: string;
+  /** Custom exit conditions */
+  exitConditions?: string[];
+  /** Whether Composio integrations are available */
+  composioEnabled?: boolean;
 }
 
 // ── Prompt Builder ─────────────────────────────────────────────────────────
 
 function formatSkillList(skills: Skill[]): string {
-    if (skills.length === 0) return "No skills available.";
+  if (skills.length === 0) return "No skills available.";
 
-    const grouped: Record<string, Skill[]> = {};
-    for (const skill of skills) {
-        if (!grouped[skill.category]) grouped[skill.category] = [];
-        grouped[skill.category].push(skill);
-    }
+  const grouped: Record<string, Skill[]> = {};
+  for (const skill of skills) {
+    if (!grouped[skill.category]) grouped[skill.category] = [];
+    grouped[skill.category].push(skill);
+  }
 
-    const sections = Object.entries(grouped).map(([category, categorySkills]) => {
-        const items = categorySkills
-            .map((s) => `  - **${s.name}**: ${s.description}`)
-            .join("\n");
-        return `[${category}]\n${items}`;
-    });
+  const sections = Object.entries(grouped).map(([category, categorySkills]) => {
+    const items = categorySkills
+      .map((s) => `  - **${s.name}**: ${s.description}`)
+      .join("\n");
+    return `[${category}]\n${items}`;
+  });
 
-    return sections.join("\n\n");
+  return sections.join("\n\n");
 }
 
 export async function buildSystemPrompt(config: PromptConfig = {}): Promise<string> {
-    const skills = getAllSkills();
-    const memoryContext = await memoryStore.formatForContext();
+  const skills = getAllSkills();
+  const memoryContext = await memoryStore.formatForContext();
 
-    const identity =
-        config.identity ||
-        `You are RantChat AI — an autonomous AI agent designed to free humans from repetitive work. You operate independently, making decisions and taking actions to accomplish tasks completely. You are powerful, thorough, and proactive.`;
+  const identity =
+    config.identity ||
+    `You are RantChat AI — an autonomous AI agent designed to free humans from repetitive work. You operate independently, making decisions and taking actions to accomplish tasks completely. You are powerful, thorough, and proactive.`;
 
-    const exitConditions = config.exitConditions || [
-        "You have fully answered the user's question with verified information",
-        "You have completed the requested task and confirmed the results",
-        "You have exhausted all available approaches and clearly communicated what you found",
-    ];
+  const exitConditions = config.exitConditions || [
+    "You have fully answered the user's question with verified information",
+    "You have completed the requested task and confirmed the results",
+    "You have exhausted all available approaches and clearly communicated what you found",
+  ];
 
-    const prompt = `${identity}
+  const prompt = `${identity}
 
 ═══════════════════════════════════════════════════════════
 YOUR CAPABILITIES — What You Can Do
@@ -118,6 +118,19 @@ ${config.composioEnabled ? `🔌 1000+ APP INTEGRATIONS (via Composio)
   Example: "Send an email to alice@example.com" → Search for Gmail tools → Auth if needed → Send
   Example: "Star the react repo on GitHub" → Search → Auth → Execute
   Example: "Create a meeting tomorrow at 2pm" → Search Calendar tools → Auth → Create event
+
+  🔧 GET NEW SKILLS — Discover New Integrations
+  When a user asks you to connect to a service and no native Composio tool exists:
+  1. Use COMPOSIO_SEARCH_TOOLS to check the integration library first
+  2. If no native tool is found, call discover_integration with the service name and use case
+  3. Review the API docs report to understand endpoints and authentication method
+  4. Present a clear plan to the user explaining what you'll build
+  5. Ask for any required credentials (API keys, OAuth tokens)
+  6. Wire it up using http_request to call the API directly
+  7. Store the working API configuration in memory for future use
+
+  You can integrate with ANY service that has a REST API, even without a pre-built tool.
+  Be proactive — if a native tool doesn't exist, discover one instead of giving up.
 ` : ""}
 ═══════════════════════════════════════════════════════════
 AVAILABLE SKILLS (Tool Functions)
@@ -175,5 +188,5 @@ EXIT CONDITIONS — Stop working when:
 ${exitConditions.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 ${config.context ? `\nADDITIONAL CONTEXT:\n${config.context}` : ""}`;
 
-    return prompt;
+  return prompt;
 }

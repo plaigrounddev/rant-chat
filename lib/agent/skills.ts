@@ -354,3 +354,121 @@ registerSkill({
         });
     },
 });
+
+// ── Integration Discovery — mirrors Lindy's "Get New Skills" ─────────────
+
+registerSkill({
+    name: "discover_integration",
+    description:
+        "Search for API documentation and integration methods for a service that doesn't have a native Composio tool. Searches the web for the service's REST API docs, reads them, and returns a structured report with API base URL, authentication method, key endpoints, and a suggested integration plan using http_request.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "discover_integration",
+        description:
+            "Search for API documentation and integration methods for a service without a native integration. Returns a structured report with API details and a suggested plan.",
+        parameters: {
+            type: "object",
+            properties: {
+                service_name: {
+                    type: "string",
+                    description:
+                        "The name of the service to discover (e.g. 'Folks CRM', 'Airtable', 'Notion')",
+                },
+                use_case: {
+                    type: "string",
+                    description:
+                        "What the user wants to accomplish (e.g. 'create contacts from emails', 'sync spreadsheet data')",
+                },
+            },
+            required: ["service_name", "use_case"],
+        },
+    },
+    executor: async (args) => {
+        const serviceName = asNonEmptyString(args.service_name);
+        const useCase = asNonEmptyString(args.use_case);
+        if (!serviceName) return JSON.stringify({ error: "service_name must be a non-empty string" });
+        if (!useCase) return JSON.stringify({ error: "use_case must be a non-empty string" });
+
+        const report: {
+            service: string;
+            use_case: string;
+            api_docs_searched: string[];
+            api_findings: string[];
+            suggested_plan: string;
+        } = {
+            service: serviceName,
+            use_case: useCase,
+            api_docs_searched: [],
+            api_findings: [],
+            suggested_plan: "",
+        };
+
+        // Step 1: Search for API docs using web scraping of search results
+        const searchQueries = [
+            `${serviceName} API documentation REST endpoint`,
+            `${serviceName} developer API authentication how to`,
+        ];
+
+        for (const query of searchQueries) {
+            try {
+                // Use our http_request executor to search via a search engine
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=3`;
+                const searchResult = await makeHttpRequest({
+                    url: searchUrl,
+                    method: "GET",
+                    headers: {
+                        "User-Agent": "Mozilla/5.0 (compatible; RantChat/1.0)",
+                    },
+                });
+                report.api_docs_searched.push(query);
+
+                // Extract any URLs from the search results that look like API docs
+                const urlMatches = searchResult.match(/https?:\/\/[^\s"'<>]+(?:api|developer|docs|documentation)[^\s"'<>]*/gi);
+                if (urlMatches && urlMatches.length > 0) {
+                    // Try to scrape the first API doc URL
+                    const docUrl = urlMatches[0];
+                    try {
+                        const docContent = await scrapeUrl(docUrl);
+                        const parsed = JSON.parse(docContent);
+                        const text = (parsed.content || parsed.text || "").slice(0, 3000);
+                        if (text.length > 100) {
+                            report.api_findings.push(
+                                `Found API docs at ${docUrl}:\n${text}`
+                            );
+                        }
+                    } catch {
+                        report.api_findings.push(`Found potential docs URL: ${docUrl} (could not scrape)`);
+                    }
+                }
+            } catch (err) {
+                report.api_findings.push(`Search failed for "${query}": ${(err as Error).message}`);
+            }
+        }
+
+        // Step 2: Generate a suggested plan
+        if (report.api_findings.length > 0) {
+            report.suggested_plan = [
+                `Based on the API documentation found for ${serviceName}:`,
+                ``,
+                `1. **Get API credentials** — Ask the user for their ${serviceName} API key or OAuth token`,
+                `2. **Test the connection** — Make a simple GET request to verify authentication works`,
+                `3. **Implement the use case** — Use http_request to call the specific endpoints for: ${useCase}`,
+                `4. **Store the config** — Save the working API details in memory for future use`,
+                ``,
+                `The user should provide their API key/token to proceed.`,
+            ].join("\n");
+        } else {
+            report.suggested_plan = [
+                `Could not find REST API documentation for ${serviceName}.`,
+                ``,
+                `Alternative approaches:`,
+                `1. Ask the user if ${serviceName} has a developer portal or API docs`,
+                `2. Check if there's a Zapier or webhook integration available`,
+                `3. Try web scraping the ${serviceName} interface as a last resort`,
+            ].join("\n");
+        }
+
+        return JSON.stringify(report, null, 2);
+    },
+});

@@ -228,6 +228,7 @@ function ToolCallCard({
         create_memory: <BrainIcon className="size-4" />,
         update_memory: <BrainIcon className="size-4" />,
         delete_memory: <BrainIcon className="size-4" />,
+        discover_integration: <SearchIcon className="size-4" />,
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: <SearchIcon className="size-4" />,
         COMPOSIO_MANAGE_CONNECTIONS: <PlugIcon className="size-4" />,
@@ -245,6 +246,7 @@ function ToolCallCard({
         create_memory: "Storing Memory",
         update_memory: "Updating Memory",
         delete_memory: "Deleting Memory",
+        discover_integration: "Discovering Integration",
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: "Searching Tools",
         COMPOSIO_MANAGE_CONNECTIONS: "Managing Connection",

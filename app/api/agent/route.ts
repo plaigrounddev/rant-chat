@@ -19,6 +19,7 @@ import { NextRequest } from "next/server";
 import WebSocket from "ws";
 import { getAgentTools, getCustomTools, executeTool } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/prompts";
+import { getTemplate } from "@/lib/agent/prompt-templates";
 import { taskStore } from "@/lib/agent/task-store";
 import {
     getComposioTools,
@@ -60,9 +61,10 @@ export async function POST(req: NextRequest) {
             { status: 400, headers: { "Content-Type": "application/json" } }
         );
     }
-    const { message, previousResponseId } = body as {
+    const { message, previousResponseId, templateSlug } = body as {
         message: string;
         previousResponseId?: string;
+        templateSlug?: string;
     };
 
     if (!message?.trim()) {
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
                 controller.close();
             }
 
-            void runAgentLoop(apiKey, message, previousResponseId, sendSSE, close).catch((err) => {
+            void runAgentLoop(apiKey, message, previousResponseId, templateSlug, sendSSE, close).catch((err) => {
                 sendSSE("error", { code: "agent_error", message: String(err) });
                 close();
             });
@@ -109,6 +111,7 @@ async function runAgentLoop(
     apiKey: string,
     userMessage: string,
     previousResponseId: string | undefined,
+    templateSlug: string | undefined,
     sendSSE: (event: string, data: unknown) => void,
     close: () => void
 ) {
@@ -129,9 +132,13 @@ async function runAgentLoop(
         sendSSE("composio_ready", { toolCount: composioTools.length, toolkitLogos });
     }
 
+    // Look up prompt template overrides
+    const template = templateSlug ? getTemplate(templateSlug) : undefined;
+
     // Build the dynamic system prompt with memories & skills
     const systemInstructions = await buildSystemPrompt({
         composioEnabled: isComposioEnabled(),
+        ...(template?.config || {}),
     });
 
     try {
