@@ -37,6 +37,7 @@ import {
     BoxIcon,
     TerminalIcon,
     ExternalLinkIcon,
+    LockKeyholeIcon,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 
@@ -229,6 +230,10 @@ function ToolCallCard({
         update_memory: <BrainIcon className="size-4" />,
         delete_memory: <BrainIcon className="size-4" />,
         discover_integration: <SearchIcon className="size-4" />,
+        store_secret: <LockKeyholeIcon className="size-4" />,
+        get_secret: <LockKeyholeIcon className="size-4" />,
+        list_secrets: <LockKeyholeIcon className="size-4" />,
+        delete_secret: <LockKeyholeIcon className="size-4" />,
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: <SearchIcon className="size-4" />,
         COMPOSIO_MANAGE_CONNECTIONS: <PlugIcon className="size-4" />,
@@ -247,6 +252,10 @@ function ToolCallCard({
         update_memory: "Updating Memory",
         delete_memory: "Deleting Memory",
         discover_integration: "Discovering Integration",
+        store_secret: "Storing Secret",
+        get_secret: "Retrieving Secret",
+        list_secrets: "Listing Secrets",
+        delete_secret: "Deleting Secret",
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: "Searching Tools",
         COMPOSIO_MANAGE_CONNECTIONS: "Managing Connection",

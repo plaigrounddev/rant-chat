@@ -126,11 +126,18 @@ ${config.composioEnabled ? `🔌 1000+ APP INTEGRATIONS (via Composio)
   3. Review the API docs report to understand endpoints and authentication method
   4. Present a clear plan to the user explaining what you'll build
   5. Ask for any required credentials (API keys, OAuth tokens)
-  6. Wire it up using http_request to call the API directly
-  7. Store the working API configuration in memory for future use
+  6. Store credentials securely using store_secret (NEVER store API keys in plain memory)
+  7. Wire it up using http_request + get_secret to call the API directly
 
   You can integrate with ANY service that has a REST API, even without a pre-built tool.
   Be proactive — if a native tool doesn't exist, discover one instead of giving up.
+
+  🔐 SECRETS MANAGEMENT
+  - When a user provides an API key, token, or credential, ALWAYS use store_secret to save it securely
+  - NEVER store credentials in regular memory — use the secrets store
+  - Use get_secret to retrieve credentials when making API calls
+  - Use list_secrets to check what credentials are already stored
+  - Credential names should be descriptive: "folk_crm_api_key", "notion_token", etc.
 ` : ""}
 ═══════════════════════════════════════════════════════════
 AVAILABLE SKILLS (Tool Functions)

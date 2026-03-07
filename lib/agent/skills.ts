@@ -472,3 +472,157 @@ registerSkill({
         return JSON.stringify(report, null, 2);
     },
 });
+
+// ── Secrets Management — Encrypted API Key Storage ───────────────────────
+
+import { secretsStore } from "./secrets";
+
+registerSkill({
+    name: "store_secret",
+    description:
+        "Securely store an API key, token, or credential. Encrypted at rest using AES-256-GCM. Use this when a user provides an API key or token for a service integration.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "store_secret",
+        description:
+            "Securely store an API key, token, or credential for later use. Values are encrypted at rest.",
+        parameters: {
+            type: "object",
+            properties: {
+                name: {
+                    type: "string",
+                    description:
+                        "A descriptive name for the secret (e.g. 'folk_crm_api_key', 'notion_token'). Use lowercase with underscores.",
+                },
+                value: {
+                    type: "string",
+                    description: "The secret value to store (API key, token, etc.)",
+                },
+            },
+            required: ["name", "value"],
+        },
+    },
+    executor: async (args) => {
+        const name = typeof args.name === "string" ? args.name.trim() : "";
+        const value = typeof args.value === "string" ? args.value.trim() : "";
+        if (!name) return JSON.stringify({ error: "name must be a non-empty string" });
+        if (!value) return JSON.stringify({ error: "value must be a non-empty string" });
+
+        // Sanitize name to lowercase with underscores
+        const safeName = name.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+        secretsStore.store(safeName, value);
+
+        return JSON.stringify({
+            success: true,
+            message: `Secret "${safeName}" stored securely`,
+            name: safeName,
+        });
+    },
+});
+
+registerSkill({
+    name: "get_secret",
+    description:
+        "Retrieve a previously stored API key, token, or credential by name. Returns the decrypted value.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "get_secret",
+        description:
+            "Retrieve a previously stored secret (API key, token) by name.",
+        parameters: {
+            type: "object",
+            properties: {
+                name: {
+                    type: "string",
+                    description: "The name of the secret to retrieve",
+                },
+            },
+            required: ["name"],
+        },
+    },
+    executor: async (args) => {
+        const name = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
+        if (!name) return JSON.stringify({ error: "name must be a non-empty string" });
+
+        const value = secretsStore.get(name);
+        if (value === null) {
+            return JSON.stringify({
+                error: "Secret not found",
+                name,
+                available: secretsStore.list(),
+            });
+        }
+
+        return JSON.stringify({ success: true, name, value });
+    },
+});
+
+registerSkill({
+    name: "list_secrets",
+    description:
+        "List the names of all stored secrets. Does NOT return the secret values — only the names.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "list_secrets",
+        description:
+            "List all stored secret names. Returns names only, not values.",
+        parameters: {
+            type: "object",
+            properties: {},
+            required: [],
+        },
+    },
+    executor: async () => {
+        const names = secretsStore.list();
+        return JSON.stringify({
+            count: names.length,
+            secrets: names,
+            message: names.length > 0
+                ? `${names.length} secret(s) stored: ${names.join(", ")}`
+                : "No secrets stored yet",
+        });
+    },
+});
+
+registerSkill({
+    name: "delete_secret",
+    description:
+        "Delete a stored secret by name. Use when a user wants to remove a credential.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "delete_secret",
+        description: "Delete a stored secret by name.",
+        parameters: {
+            type: "object",
+            properties: {
+                name: {
+                    type: "string",
+                    description: "The name of the secret to delete",
+                },
+            },
+            required: ["name"],
+        },
+    },
+    executor: async (args) => {
+        const name = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
+        if (!name) return JSON.stringify({ error: "name must be a non-empty string" });
+
+        const deleted = secretsStore.delete(name);
+        if (!deleted) {
+            return JSON.stringify({
+                error: "Secret not found",
+                name,
+                available: secretsStore.list(),
+            });
+        }
+
+        return JSON.stringify({
+            success: true,
+            message: `Secret "${name}" deleted`,
+        });
+    },
+});
