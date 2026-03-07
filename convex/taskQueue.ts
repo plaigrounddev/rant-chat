@@ -1,5 +1,5 @@
 // convex/taskQueue.ts
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -28,15 +28,28 @@ export const enqueue = mutation({
 });
 
 /**
- * Get the next pending task (highest priority first)
+ * Get the next pending task — INTERNAL ONLY.
+ * Only callable server-side (heartbeat system).
+ * Prevents cross-tenant task leakage in multi-user scenarios.
  */
-export const next = query({
-    args: {},
-    handler: async (ctx) => {
+export const next = internalQuery({
+    args: {
+        userId: v.optional(v.id("users")),
+    },
+    handler: async (ctx, args) => {
+        if (args.userId) {
+            return await ctx.db
+                .query("taskQueue")
+                .withIndex("by_user_pending", (q) =>
+                    q.eq("userId", args.userId!).eq("status", "pending")
+                )
+                .order("asc")
+                .first();
+        }
         return await ctx.db
             .query("taskQueue")
             .withIndex("by_status", (q) => q.eq("status", "pending"))
-            .order("asc") // lowest priority number = highest priority
+            .order("asc")
             .first();
     },
 });

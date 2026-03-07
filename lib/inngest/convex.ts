@@ -8,9 +8,6 @@
  * server-to-server communication (no auth context needed).
  */
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL;
-const CONVEX_ADMIN_KEY = process.env.CONVEX_DEPLOY_KEY;
-
 /**
  * Call a Convex mutation from server-side code (Inngest workflows).
  * Uses the Convex HTTP API directly.
@@ -19,20 +16,22 @@ export async function callConvexMutation(
     functionPath: string,
     args: Record<string, unknown>,
 ): Promise<unknown> {
-    if (!CONVEX_URL) {
+    // Read env vars per-call (not module-level) to avoid stale captures
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+    const adminKey = process.env.CONVEX_DEPLOY_KEY;
+
+    if (!convexUrl) {
         console.warn("[convex-bridge] NEXT_PUBLIC_CONVEX_URL not set, skipping mutation:", functionPath);
         return null;
     }
 
-    // Convert the Convex URL to the HTTP API endpoint
-    // e.g., https://foo-bar-123.convex.cloud → https://foo-bar-123.convex.cloud/api/mutation
-    const httpUrl = CONVEX_URL.replace(/\/$/, "");
+    const httpUrl = convexUrl.replace(/\/$/, "");
 
     const response = await fetch(`${httpUrl}/api/mutation`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            ...(CONVEX_ADMIN_KEY ? { Authorization: `Convex ${CONVEX_ADMIN_KEY}` } : {}),
+            ...(adminKey ? { Authorization: `Convex ${adminKey}` } : {}),
         },
         body: JSON.stringify({
             path: functionPath,

@@ -2,19 +2,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-const stepValidator = v.object({
-    id: v.string(),
-    name: v.string(),
-    status: v.union(
-        v.literal("pending"),
-        v.literal("running"),
-        v.literal("completed"),
-        v.literal("failed"),
-    ),
-    startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    result: v.optional(v.string()),
-});
 
 /**
  * Create a new workflow run

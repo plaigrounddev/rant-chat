@@ -1,5 +1,5 @@
 // convex/messages.ts
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -37,28 +37,31 @@ export const send = mutation({
 });
 
 /**
- * List messages for a thread (chronological).
+ * List messages for a thread (chronological, paginated).
  * This is a REACTIVE query — the client auto-receives new messages
  * without polling. This is how workflow results arrive instantly.
+ * Capped at 500 messages to prevent unbounded queries in long-running threads.
  */
 export const list = query({
     args: {
         threadId: v.id("threads"),
+        limit: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
         return await ctx.db
             .query("messages")
             .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
             .order("asc")
-            .collect();
+            .take(args.limit ?? 500);
     },
 });
 
 /**
- * Send a system/workflow message (no auth required — for server-side use).
+ * Send a system/workflow message — INTERNAL ONLY.
+ * Only callable server-side (via admin key or other Convex functions).
  * Used by Inngest workflows to push results back to threads.
  */
-export const sendSystem = mutation({
+export const sendSystem = internalMutation({
     args: {
         threadId: v.id("threads"),
         content: v.string(),
@@ -82,3 +85,4 @@ export const sendSystem = mutation({
         return messageId;
     },
 });
+
