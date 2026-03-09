@@ -104,11 +104,15 @@ export class KernelBrowserManager {
         }
 
         try {
+            // Terminate the remote Kernel browser to prevent cloud resource leaks
+            await this.kernel.browsers.deleteByID(id);
             instance.status = "terminated";
             this.activeBrowsers.delete(id);
-            console.log(`[KernelBrowserManager] Browser ${id} closed`);
+            console.log(`[KernelBrowserManager] Browser ${id} terminated (remote + local)`);
         } catch (error: unknown) {
             console.error(`[KernelBrowserManager] Failed to close browser ${id}:`, error);
+            // Still clean up local state even if remote call fails
+            instance.status = "terminated";
             this.activeBrowsers.delete(id);
         }
     }

@@ -4,10 +4,13 @@
  * This executor bridges the agent's tool-calling interface with the
  * KernelBrowserManager and BrowserNavigator modules. When the agent invokes
  * a browser_* tool, this executor handles:
- * 1. Creating/reusing a Kernel browser instance
+ * 1. Creating/reusing a Kernel browser instance (scoped per session)
  * 2. Connecting Playwright via CDP
  * 3. Executing the requested browser action
  * 4. Formatting results for the agent
+ *
+ * IMPORTANT: Each agent session (task run) gets its own isolated browser
+ * to prevent cross-session data leakage (cookies, auth, page state).
  */
 
 import {
@@ -17,43 +20,49 @@ import {
 } from "../../browser";
 
 // ---------------------------------------------------------------------------
-// State
+// Per-session browser state (isolated per task run)
 // ---------------------------------------------------------------------------
 
-let navigator: BrowserNavigator | null = null;
-let currentBrowserId: string | null = null;
+interface BrowserSession {
+    navigator: BrowserNavigator;
+    browserId: string;
+}
+
+/** Map of sessionId → browser state. Each task run gets its own browser. */
+const sessions: Map<string, BrowserSession> = new Map();
 
 // ---------------------------------------------------------------------------
 // Executor
 // ---------------------------------------------------------------------------
 
 /**
- * Execute a browser tool call.
+ * Execute a browser tool call, scoped to a session.
  *
  * @param toolName - The browser tool name (e.g., "browser_navigate")
  * @param args - The parsed tool arguments
+ * @param sessionId - Unique session/task ID for isolation (required)
  * @returns A string result for the agent
  */
 export async function executeBrowserTool(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    sessionId?: string
 ): Promise<string> {
     if (!isBrowserTool(toolName)) {
         return JSON.stringify({ error: `Unknown browser tool: ${toolName}` });
     }
 
-    try {
-        // Ensure we have an active browser + navigator
-        await ensureBrowserConnection();
+    // Use a default session if none provided (single-user fallback)
+    const sid = sessionId || "__default__";
 
-        if (!navigator) {
-            return JSON.stringify({ error: "Failed to establish browser connection" });
-        }
+    try {
+        // Ensure we have an active browser for this session
+        const session = await ensureBrowserConnection(sid);
 
         // Dispatch to the correct handler
         switch (toolName) {
             case "browser_navigate": {
-                const result = await navigator.navigate(args.url as string);
+                const result = await session.navigator.navigate(args.url as string);
                 return JSON.stringify({
                     success: true,
                     url: result.url,
@@ -63,12 +72,12 @@ export async function executeBrowserTool(
             }
 
             case "browser_click": {
-                await navigator.click(args.selector as string);
+                await session.navigator.click(args.selector as string);
                 return JSON.stringify({ success: true, action: "clicked", selector: args.selector });
             }
 
             case "browser_type": {
-                await navigator.type(
+                await session.navigator.type(
                     args.selector as string,
                     args.text as string,
                     args.clearFirst as boolean ?? true
@@ -77,7 +86,7 @@ export async function executeBrowserTool(
             }
 
             case "browser_scroll": {
-                await navigator.scroll(
+                await session.navigator.scroll(
                     args.direction as "up" | "down" | "left" | "right",
                     (args.amount as number) ?? 500
                 );
@@ -85,7 +94,7 @@ export async function executeBrowserTool(
             }
 
             case "browser_extract_text": {
-                const text = await navigator.extractText(args.selector as string | undefined);
+                const text = await session.navigator.extractText(args.selector as string | undefined);
                 return JSON.stringify({
                     success: true,
                     text: text.slice(0, 10000), // Limit text to avoid huge context
@@ -93,7 +102,7 @@ export async function executeBrowserTool(
             }
 
             case "browser_screenshot": {
-                const screenshot = await navigator.screenshot({
+                const screenshot = await session.navigator.screenshot({
                     fullPage: args.fullPage as boolean,
                     selector: args.selector as string | undefined,
                 });
@@ -111,7 +120,7 @@ export async function executeBrowserTool(
                     value: string;
                     type?: "text" | "select" | "checkbox" | "radio";
                 }>;
-                await navigator.fillForm(fields);
+                await session.navigator.fillForm(fields);
                 return JSON.stringify({
                     success: true,
                     action: "form_filled",
@@ -120,17 +129,17 @@ export async function executeBrowserTool(
             }
 
             case "browser_evaluate_js": {
-                const result = await navigator.evaluateJS(args.expression as string);
+                const result = await session.navigator.evaluateJS(args.expression as string);
                 return JSON.stringify({ success: true, result });
             }
 
             case "browser_wait": {
                 if (args.ms) {
-                    await navigator.wait(args.ms as number);
+                    await session.navigator.wait(args.ms as number);
                     return JSON.stringify({ success: true, action: "waited", ms: args.ms });
                 }
                 if (args.selector) {
-                    const found = await navigator.waitForSelector(
+                    const found = await session.navigator.waitForSelector(
                         args.selector as string,
                         (args.timeout as number) ?? 10000
                     );
@@ -145,7 +154,7 @@ export async function executeBrowserTool(
             }
 
             case "browser_get_links": {
-                const links = await navigator.extractLinks();
+                const links = await session.navigator.extractLinks();
                 return JSON.stringify({
                     success: true,
                     links: links.slice(0, 50), // Limit to 50 links
@@ -154,12 +163,12 @@ export async function executeBrowserTool(
             }
 
             case "browser_get_page_summary": {
-                const summary = await navigator.getPageSummary();
+                const summary = await session.navigator.getPageSummary();
                 return JSON.stringify({ success: true, ...summary });
             }
 
             case "browser_find_elements": {
-                const elements = await navigator.findInteractiveElements();
+                const elements = await session.navigator.findInteractiveElements();
                 return JSON.stringify({
                     success: true,
                     elements,
@@ -168,27 +177,27 @@ export async function executeBrowserTool(
             }
 
             case "browser_press_key": {
-                await navigator.pressKey(args.key as string);
+                await session.navigator.pressKey(args.key as string);
                 return JSON.stringify({ success: true, action: "key_pressed", key: args.key });
             }
 
             case "browser_new_tab": {
-                await navigator.newTab(args.url as string | undefined);
+                await session.navigator.newTab(args.url as string | undefined);
                 return JSON.stringify({ success: true, action: "new_tab_opened", url: args.url });
             }
 
             case "browser_close_tab": {
-                await navigator.closeTab();
+                await session.navigator.closeTab();
                 return JSON.stringify({ success: true, action: "tab_closed" });
             }
 
             case "browser_go_back": {
-                const result = await navigator.goBack();
+                const result = await session.navigator.goBack();
                 return JSON.stringify({ success: true, ...result });
             }
 
             case "browser_close": {
-                await closeBrowser();
+                await closeBrowserSession(sid);
                 return JSON.stringify({ success: true, action: "browser_closed" });
             }
 
@@ -197,7 +206,7 @@ export async function executeBrowserTool(
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[BrowserExecutor] Error executing ${toolName}:`, message);
+        console.error(`[BrowserExecutor] Error executing ${toolName} (session=${sid}):`, message);
         return JSON.stringify({
             success: false,
             error: message,
@@ -207,37 +216,56 @@ export async function executeBrowserTool(
 }
 
 // ---------------------------------------------------------------------------
-// Connection Management
+// Connection Management (per-session)
 // ---------------------------------------------------------------------------
 
-async function ensureBrowserConnection(): Promise<void> {
-    if (navigator) return; // Already connected
+async function ensureBrowserConnection(sessionId: string): Promise<BrowserSession> {
+    const existing = sessions.get(sessionId);
+    if (existing) return existing;
 
     const manager = getKernelBrowserManager();
     const instance = await manager.getOrCreateBrowser();
 
-    navigator = new BrowserNavigator();
-    await navigator.connect(instance.cdpWsUrl);
-    currentBrowserId = instance.id;
+    const nav = new BrowserNavigator();
+    await nav.connect(instance.cdpWsUrl);
+
+    const session: BrowserSession = {
+        navigator: nav,
+        browserId: instance.id,
+    };
+
+    sessions.set(sessionId, session);
+    console.log(`[BrowserExecutor] New browser session: ${sessionId} → browser ${instance.id}`);
+    return session;
 }
 
-async function closeBrowser(): Promise<void> {
-    if (navigator) {
-        await navigator.disconnect();
-        navigator = null;
-    }
-    if (currentBrowserId) {
-        const manager = getKernelBrowserManager();
-        await manager.closeBrowser(currentBrowserId);
-        currentBrowserId = null;
-    }
+async function closeBrowserSession(sessionId: string): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    await session.navigator.disconnect();
+    const manager = getKernelBrowserManager();
+    await manager.closeBrowser(session.browserId);
+    sessions.delete(sessionId);
+    console.log(`[BrowserExecutor] Closed browser session: ${sessionId}`);
 }
 
 /**
- * Clean up all browser resources. Call during shutdown.
+ * Clean up a specific session's browser resources.
+ * Call this when a task run completes.
+ */
+export async function cleanupBrowserSession(sessionId: string): Promise<void> {
+    await closeBrowserSession(sessionId);
+}
+
+/**
+ * Clean up ALL browser resources. Call during shutdown.
  */
 export async function cleanupBrowserExecutor(): Promise<void> {
-    await closeBrowser();
+    const sids = Array.from(sessions.keys());
+    for (const sid of sids) {
+        await closeBrowserSession(sid);
+    }
     const manager = getKernelBrowserManager();
     await manager.closeAll();
 }

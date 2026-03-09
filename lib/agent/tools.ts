@@ -94,16 +94,17 @@ export function getAgentTools(): (BuiltInTool | FunctionToolDefinition)[] {
 
 export async function executeTool(
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  sessionId?: string
 ): Promise<string> {
-  // Route browser_* tools to the browser executor
+  // Route browser_* tools to the browser executor (session-scoped)
   if (isBrowserTool(name)) {
-    return executeBrowserTool(name, args);
+    return executeBrowserTool(name, args, sessionId);
   }
 
-  // Route sandbox_* tools to the sandbox executor
+  // Route sandbox_* tools to the sandbox executor (session-scoped)
   if (isSandboxTool(name)) {
-    return executeSandboxTool(name, args);
+    return executeSandboxTool(name, args, sessionId);
   }
 
   // Everything else goes to the skills registry

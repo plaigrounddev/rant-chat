@@ -5,10 +5,13 @@
  * SandboxManager, CodeExecutor, FileSystemManager, TerminalManager, and
  * DesktopController modules. When the agent invokes a sandbox_* tool, this
  * executor handles:
- * 1. Creating/reusing an E2B sandbox
+ * 1. Creating/reusing an E2B sandbox (scoped per session)
  * 2. Routing to the correct module (code, files, terminal, desktop)
  * 3. Executing the action
  * 4. Formatting results for the agent
+ *
+ * IMPORTANT: Each agent session (task run) gets its own isolated sandbox
+ * to prevent cross-session state leakage (filesystem, env vars, processes).
  */
 
 import {
@@ -22,33 +25,47 @@ import {
 } from "../../sandbox";
 
 // ---------------------------------------------------------------------------
-// State
+// Per-session sandbox state (isolated per task run)
 // ---------------------------------------------------------------------------
 
-let codeExecutor: CodeExecutor | null = null;
-let fileManager: FileSystemManager | null = null;
-let terminalManager: TerminalManager | null = null;
-let desktopController: DesktopController | null = null;
-let currentSandboxId: string | null = null;
+interface SandboxSession {
+    codeExecutor: CodeExecutor;
+    fileManager: FileSystemManager;
+    terminalManager: TerminalManager;
+    sandboxId: string;
+}
+
+interface DesktopSession {
+    controller: DesktopController;
+}
+
+/** Map of sessionId → sandbox state. Each task run gets its own sandbox. */
+const sandboxSessions: Map<string, SandboxSession> = new Map();
+const desktopSessions: Map<string, DesktopSession> = new Map();
 
 // ---------------------------------------------------------------------------
 // Executor
 // ---------------------------------------------------------------------------
 
 /**
- * Execute a sandbox tool call.
+ * Execute a sandbox tool call, scoped to a session.
  *
  * @param toolName - The sandbox tool name (e.g., "sandbox_execute_code")
  * @param args - The parsed tool arguments
+ * @param sessionId - Unique session/task ID for isolation (required)
  * @returns A string result for the agent
  */
 export async function executeSandboxTool(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    sessionId?: string
 ): Promise<string> {
     if (!isSandboxTool(toolName)) {
         return JSON.stringify({ error: `Unknown sandbox tool: ${toolName}` });
     }
+
+    // Use a default session if none provided (single-user fallback)
+    const sid = sessionId || "__default__";
 
     try {
         // Desktop tools use a separate sandbox
@@ -58,20 +75,17 @@ export async function executeSandboxTool(
             toolName === "sandbox_press_key" ||
             toolName === "sandbox_scroll_desktop" ||
             toolName === "sandbox_drag") {
-            return executeDesktopTool(toolName, args);
+            return executeDesktopTool(toolName, args, sid);
         }
 
-        // Ensure we have an active sandbox for code/file/terminal tools
-        await ensureSandboxConnection();
+        // Ensure we have an active sandbox for this session
+        const session = await ensureSandboxConnection(sid);
 
         // Dispatch to the correct handler
         switch (toolName) {
             // ------- Code Execution -------
             case "sandbox_execute_code": {
-                if (!codeExecutor) {
-                    return JSON.stringify({ error: "Code executor not initialized" });
-                }
-                const result = await codeExecutor.executeCode(args.code as string, {
+                const result = await session.codeExecutor.executeCode(args.code as string, {
                     language: (args.language as "python" | "javascript" | "bash") ?? "python",
                     variables: args.variables as Record<string, unknown> | undefined,
                 });
@@ -92,10 +106,7 @@ export async function executeSandboxTool(
 
             // ------- File Operations -------
             case "sandbox_read_file": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                const content = await fileManager.readFile(args.path as string);
+                const content = await session.fileManager.readFile(args.path as string);
                 return JSON.stringify({
                     success: true,
                     path: content.path,
@@ -105,10 +116,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_write_file": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                await fileManager.writeFile(args.path as string, args.content as string);
+                await session.fileManager.writeFile(args.path as string, args.content as string);
                 return JSON.stringify({
                     success: true,
                     action: "file_written",
@@ -118,10 +126,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_list_files": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                const files = await fileManager.listDirectory(
+                const files = await session.fileManager.listDirectory(
                     (args.path as string) ?? "/home/user"
                 );
                 return JSON.stringify({
@@ -132,10 +137,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_search_files": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                const results = await fileManager.searchFiles(
+                const results = await session.fileManager.searchFiles(
                     (args.directory as string) ?? "/home/user",
                     args.pattern as string
                 );
@@ -147,10 +149,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_delete_file": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                await fileManager.delete(
+                await session.fileManager.delete(
                     args.path as string,
                     (args.recursive as boolean) ?? false
                 );
@@ -162,10 +161,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_create_archive": {
-                if (!fileManager) {
-                    return JSON.stringify({ error: "File manager not initialized" });
-                }
-                await fileManager.createArchive(
+                await session.fileManager.createArchive(
                     args.outputPath as string,
                     args.sourcePaths as string[]
                 );
@@ -178,10 +174,7 @@ export async function executeSandboxTool(
 
             // ------- Terminal / Shell -------
             case "sandbox_run_command": {
-                if (!terminalManager) {
-                    return JSON.stringify({ error: "Terminal manager not initialized" });
-                }
-                const result = await terminalManager.runCommand(args.command as string, {
+                const result = await session.terminalManager.runCommand(args.command as string, {
                     cwd: args.cwd as string | undefined,
                     timeoutMs: (args.timeoutMs as number) ?? 30000,
                 });
@@ -195,10 +188,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_install_package": {
-                if (!terminalManager) {
-                    return JSON.stringify({ error: "Terminal manager not initialized" });
-                }
-                const result = await terminalManager.installPackages(
+                const result = await session.terminalManager.installPackages(
                     args.manager as "pip" | "npm" | "apt",
                     args.packages as string[]
                 );
@@ -210,10 +200,7 @@ export async function executeSandboxTool(
             }
 
             case "sandbox_download_url": {
-                if (!terminalManager) {
-                    return JSON.stringify({ error: "Terminal manager not initialized" });
-                }
-                const result = await terminalManager.downloadUrl(
+                const result = await session.terminalManager.downloadUrl(
                     args.url as string,
                     args.destPath as string
                 );
@@ -230,7 +217,7 @@ export async function executeSandboxTool(
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[SandboxExecutor] Error executing ${toolName}:`, message);
+        console.error(`[SandboxExecutor] Error executing ${toolName} (session=${sid}):`, message);
         return JSON.stringify({
             success: false,
             error: message,
@@ -240,24 +227,28 @@ export async function executeSandboxTool(
 }
 
 // ---------------------------------------------------------------------------
-// Desktop Tool Execution (separate sandbox)
+// Desktop Tool Execution (per-session)
 // ---------------------------------------------------------------------------
 
 async function executeDesktopTool(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    sessionId: string
 ): Promise<string> {
     try {
-        if (!desktopController) {
-            desktopController = new DesktopController();
+        let session = desktopSessions.get(sessionId);
+        if (!session) {
+            const controller = new DesktopController();
+            session = { controller };
+            desktopSessions.set(sessionId, session);
         }
-        if (!desktopController.isActive()) {
-            await desktopController.createDesktop();
+        if (!session.controller.isActive()) {
+            await session.controller.createDesktop();
         }
 
         switch (toolName) {
             case "sandbox_screenshot": {
-                const screenshot = await desktopController.screenshot();
+                const screenshot = await session.controller.screenshot();
                 return JSON.stringify({
                     success: true,
                     screenshotBase64: screenshot,
@@ -269,16 +260,16 @@ async function executeDesktopTool(
                 const clickType = (args.type as string) ?? "left";
                 switch (clickType) {
                     case "right":
-                        await desktopController.rightClick(args.x as number, args.y as number);
+                        await session.controller.rightClick(args.x as number, args.y as number);
                         break;
                     case "double":
-                        await desktopController.doubleClick(args.x as number, args.y as number);
+                        await session.controller.doubleClick(args.x as number, args.y as number);
                         break;
                     case "middle":
-                        await desktopController.middleClick(args.x as number, args.y as number);
+                        await session.controller.middleClick(args.x as number, args.y as number);
                         break;
                     default:
-                        await desktopController.leftClick(args.x as number, args.y as number);
+                        await session.controller.leftClick(args.x as number, args.y as number);
                 }
                 return JSON.stringify({
                     success: true,
@@ -290,17 +281,17 @@ async function executeDesktopTool(
             }
 
             case "sandbox_type_text": {
-                await desktopController.type(args.text as string);
+                await session.controller.type(args.text as string);
                 return JSON.stringify({ success: true, action: "typed" });
             }
 
             case "sandbox_press_key": {
-                await desktopController.press(args.key as string);
+                await session.controller.press(args.key as string);
                 return JSON.stringify({ success: true, action: "key_pressed", key: args.key });
             }
 
             case "sandbox_scroll_desktop": {
-                await desktopController.scroll(
+                await session.controller.scroll(
                     (args.direction as "up" | "down") ?? "down",
                     (args.ticks as number) ?? 3
                 );
@@ -308,7 +299,7 @@ async function executeDesktopTool(
             }
 
             case "sandbox_drag": {
-                await desktopController.drag(
+                await session.controller.drag(
                     [args.startX as number, args.startY as number],
                     [args.endX as number, args.endY as number]
                 );
@@ -327,45 +318,62 @@ async function executeDesktopTool(
 }
 
 // ---------------------------------------------------------------------------
-// Connection Management
+// Connection Management (per-session)
 // ---------------------------------------------------------------------------
 
-async function ensureSandboxConnection(): Promise<void> {
-    if (codeExecutor && fileManager && terminalManager) return;
+async function ensureSandboxConnection(sessionId: string): Promise<SandboxSession> {
+    const existing = sandboxSessions.get(sessionId);
+    if (existing) return existing;
 
     const manager = getSandboxManager();
     let instance: SandboxInstance;
 
-    if (currentSandboxId) {
-        const existing = manager.getSandbox(currentSandboxId);
-        if (existing && existing.status === "running") {
-            instance = existing;
-        } else {
-            instance = await manager.createSandbox({ timeoutMs: 10 * 60 * 1000 });
-            currentSandboxId = instance.id;
-        }
-    } else {
-        instance = await manager.getOrCreateSandbox({ timeoutMs: 10 * 60 * 1000 });
-        currentSandboxId = instance.id;
-    }
+    // Always create a new sandbox for a new session — no cross-session reuse
+    instance = await manager.createSandbox({
+        timeoutMs: 10 * 60 * 1000,
+        metadata: { sessionId },
+    });
 
-    codeExecutor = new CodeExecutor(instance.sandbox);
-    fileManager = new FileSystemManager(instance.sandbox);
-    terminalManager = new TerminalManager(instance.sandbox);
+    const session: SandboxSession = {
+        codeExecutor: new CodeExecutor(instance.sandbox),
+        fileManager: new FileSystemManager(instance.sandbox),
+        terminalManager: new TerminalManager(instance.sandbox),
+        sandboxId: instance.id,
+    };
+
+    sandboxSessions.set(sessionId, session);
+    console.log(`[SandboxExecutor] New sandbox session: ${sessionId} → sandbox ${instance.id}`);
+    return session;
 }
 
 /**
- * Clean up all sandbox resources. Call during shutdown.
+ * Clean up a specific session's sandbox resources.
+ * Call this when a task run completes.
+ */
+export async function cleanupSandboxSession(sessionId: string): Promise<void> {
+    const session = sandboxSessions.get(sessionId);
+    if (session) {
+        const manager = getSandboxManager();
+        await manager.killSandbox(session.sandboxId);
+        sandboxSessions.delete(sessionId);
+    }
+
+    const desktop = desktopSessions.get(sessionId);
+    if (desktop) {
+        await desktop.controller.kill();
+        desktopSessions.delete(sessionId);
+    }
+
+    console.log(`[SandboxExecutor] Cleaned up session: ${sessionId}`);
+}
+
+/**
+ * Clean up ALL sandbox resources. Call during shutdown.
  */
 export async function cleanupSandboxExecutor(): Promise<void> {
-    codeExecutor = null;
-    fileManager = null;
-    terminalManager = null;
-    currentSandboxId = null;
-
-    if (desktopController) {
-        await desktopController.kill();
-        desktopController = null;
+    const sids = Array.from(sandboxSessions.keys());
+    for (const sid of sids) {
+        await cleanupSandboxSession(sid);
     }
 
     const manager = getSandboxManager();
