@@ -150,6 +150,7 @@ async function runAgentLoop(
                 Authorization: `Bearer ${apiKey}`,
             },
         });
+        const conn = ws; // const-narrowed for TypeScript — ws is non-null after assignment
 
         let currentResponseId: string | null = null;
         let toolRound = 0;
@@ -161,7 +162,7 @@ async function runAgentLoop(
         // Track function calls being streamed
         const pendingFunctionCalls: Map<string, FunctionCall> = new Map();
 
-        ws.on("open", () => {
+        conn.on("open", () => {
             sendSSE("status", { type: "connected" });
 
             // Build the initial request with full tool suite
@@ -185,11 +186,11 @@ async function runAgentLoop(
                 request.previous_response_id = previousResponseId;
             }
 
-            ws!.send(JSON.stringify(request));
+            conn.send(JSON.stringify(request));
             sendSSE("status", { type: "thinking" });
         });
 
-        ws.on("message", async (data: WebSocket.Data) => {
+        conn.on("message", async (data: WebSocket.Data) => {
             try {
                 const event = JSON.parse(data.toString());
                 const eventType: string = event.type;
@@ -496,7 +497,7 @@ async function runAgentLoop(
                             };
 
                             sendSSE("status", { type: "thinking" });
-                            ws!.send(JSON.stringify(continuationRequest));
+                            conn.send(JSON.stringify(continuationRequest));
                         } else {
                             // ── Iterative loop: decide whether to continue or stop ──
                             // Extract the text content from this response
@@ -531,7 +532,7 @@ async function runAgentLoop(
                                 // Clean up per-session cloud resources
                                 await cleanupBrowserSession(taskRun.id).catch(() => { });
                                 await cleanupSandboxSession(taskRun.id).catch(() => { });
-                                ws!.close();
+                                conn.close();
                                 close();
                             } else if (isMaxedOut) {
                                 // Hit the round limit — partial work, not a success
@@ -549,7 +550,7 @@ async function runAgentLoop(
                                 // Clean up per-session cloud resources
                                 await cleanupBrowserSession(taskRun.id).catch(() => { });
                                 await cleanupSandboxSession(taskRun.id).catch(() => { });
-                                ws!.close();
+                                conn.close();
                                 close();
                             } else {
                                 // Agent paused with text but hasn't finished — push it to keep going
@@ -568,7 +569,7 @@ async function runAgentLoop(
                                     previous_response_id: currentResponseId,
                                     input: [],
                                 };
-                                ws!.send(JSON.stringify(continuationRequest));
+                                conn.send(JSON.stringify(continuationRequest));
                             }
                         }
                         break;
@@ -588,7 +589,7 @@ async function runAgentLoop(
                         // Clean up per-session cloud resources
                         await cleanupBrowserSession(taskRun.id).catch(() => { });
                         await cleanupSandboxSession(taskRun.id).catch(() => { });
-                        ws!.close();
+                        conn.close();
                         close();
                         break;
 
@@ -605,7 +606,7 @@ async function runAgentLoop(
                         // Clean up per-session cloud resources
                         await cleanupBrowserSession(taskRun.id).catch(() => { });
                         await cleanupSandboxSession(taskRun.id).catch(() => { });
-                        ws!.close();
+                        conn.close();
                         close();
                         break;
                 }
@@ -618,7 +619,7 @@ async function runAgentLoop(
             }
         });
 
-        ws.on("error", (err: Error) => {
+        conn.on("error", (err: Error) => {
             console.error("WebSocket error:", err);
             taskStore.completeRun(taskRun.id, "error", err.message);
             sendSSE("error", {
@@ -631,7 +632,7 @@ async function runAgentLoop(
             close();
         });
 
-        ws.on("close", () => {
+        conn.on("close", () => {
             // Connection closed; stream may already be closed
         });
     } catch (err) {
