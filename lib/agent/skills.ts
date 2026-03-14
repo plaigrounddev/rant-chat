@@ -682,7 +682,7 @@ registerSkill({
                 namespace: {
                     type: "string",
                     description:
-                        "The namespace to search in (typically the user's ID). If not provided, defaults to 'global'.",
+                        "The namespace to search in (required — typically the user's ID or a project-scoped key).",
                 },
                 limit: {
                     type: "number",
@@ -696,7 +696,7 @@ registerSkill({
                     enum: ["image", "document", "video", "audio", "text"],
                 },
             },
-            required: ["query"],
+            required: ["query", "namespace"],
         },
     },
     executor: async (args) => {
@@ -705,7 +705,12 @@ registerSkill({
 
         const namespace = typeof args.namespace === "string" && args.namespace.trim()
             ? args.namespace
-            : "global";
+            : undefined;
+        if (!namespace) {
+            return JSON.stringify({
+                error: "namespace is required — provide the user's ID or a project-scoped namespace",
+            });
+        }
         const limit = typeof args.limit === "number" ? Math.min(args.limit, 50) : 10;
         const fileType = typeof args.file_type === "string" ? args.file_type : undefined;
 
