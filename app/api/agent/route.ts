@@ -28,8 +28,9 @@ import {
     isComposioEnabled,
     getToolkitLogos,
 } from "@/lib/agent/composio";
-import { cleanupBrowserSession } from "@/lib/agent/executors/browser-executor";
+import { cleanupBrowserSession, getBrowserSessionLiveViewUrl } from "@/lib/agent/executors/browser-executor";
 import { cleanupSandboxSession } from "@/lib/agent/executors/sandbox-executor";
+import { isBrowserTool } from "@/lib/browser";
 
 // Force skills registration on module load
 import "@/lib/agent/skills";
@@ -231,51 +232,12 @@ async function runAgentLoop(
                                     step: { id: step.id, name: step.name, status: step.status },
                                 });
                             }
-                        } else if (event.item?.type === "web_search_call") {
-                            hasUsedAnyTool = true;
-                            sendSSE("tool_start", {
-                                id: event.item.id,
-                                name: "web_search",
-                                type: "web_search_call",
-                                status: event.item.status,
-                            });
-                            taskStore.addStep(taskRun.id, {
-                                type: "tool_call",
-                                name: "web_search",
-                                status: "running",
-                            });
                         } else if (event.item?.type === "message") {
                             sendSSE("message_start", { id: event.item.id });
                         }
                         break;
 
-                    // ── Web search events (built-in) ───────────────────────
-                    case "response.web_search_call.in_progress":
-                        sendSSE("tool_update", {
-                            id: event.item_id,
-                            name: "web_search",
-                            type: "web_search_call",
-                            status: "searching",
-                        });
-                        break;
 
-                    case "response.web_search_call.searching":
-                        sendSSE("tool_update", {
-                            id: event.item_id,
-                            name: "web_search",
-                            type: "web_search_call",
-                            status: "searching",
-                        });
-                        break;
-
-                    case "response.web_search_call.completed":
-                        sendSSE("tool_update", {
-                            id: event.item_id,
-                            name: "web_search",
-                            type: "web_search_call",
-                            status: "completed",
-                        });
-                        break;
 
                     // ── Text streaming ─────────────────────────────────────
                     case "response.output_text.delta":
@@ -326,13 +288,6 @@ async function runAgentLoop(
                                 call_id: event.item.call_id,
                                 name: event.item.name,
                                 arguments: event.item.arguments,
-                            });
-                        } else if (event.item?.type === "web_search_call") {
-                            sendSSE("tool_update", {
-                                id: event.item.id,
-                                name: "web_search",
-                                type: "web_search_call",
-                                status: "completed",
                             });
                         }
                         break;
@@ -418,6 +373,40 @@ async function runAgentLoop(
                                             arguments: args,
                                             result,
                                         });
+
+                                        // Emit preview artifacts for browser & sandbox
+                                        if (isBrowserTool(fc.name)) {
+                                            const liveViewUrl = getBrowserSessionLiveViewUrl(taskRun.id);
+                                            if (liveViewUrl) {
+                                                sendSSE("browser_live_view", {
+                                                    browserId: taskRun.id,
+                                                    liveViewUrl,
+                                                    title: "Agent is browsing",
+                                                    currentUrl: (args.url as string) || undefined,
+                                                });
+                                            }
+                                        }
+
+                                        // Detect sandbox code execution with HTML output
+                                        if (fc.name === "sandbox_execute_code") {
+                                            try {
+                                                const parsed = JSON.parse(result);
+                                                if (parsed.success && parsed.artifacts) {
+                                                    const htmlArtifact = (parsed.artifacts as Array<{ type: string; mimeType: string; data: string }>)
+                                                        .find((a) => a.mimeType === "text/html");
+                                                    if (htmlArtifact) {
+                                                        sendSSE("code_preview", {
+                                                            id: `code-${fc.call_id}`,
+                                                            title: "Code Output",
+                                                            code: atob(htmlArtifact.data),
+                                                            language: (args.language as string) || "html",
+                                                        });
+                                                    }
+                                                }
+                                            } catch {
+                                                // Ignore parse errors for preview detection
+                                            }
+                                        }
 
                                         sendSSE("task_step", {
                                             taskId: taskRun.id,

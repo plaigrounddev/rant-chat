@@ -20,6 +20,7 @@ import { memoryStore } from "./memory";
 import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
+import { perplexitySearch } from "./executors/perplexity-search";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,36 @@ registerSkill({
         const url = asNonEmptyString(args.url);
         if (!url) return JSON.stringify({ error: "url must be a non-empty string" });
         return scrapeUrl(url);
+    },
+});
+
+// Web Search — Perplexity Sonar via OpenRouter
+registerSkill({
+    name: "web_search",
+    description:
+        "Search the web for current information on any topic. Returns a comprehensive answer with source citations. Use for research, fact-finding, news, and any question requiring up-to-date information.",
+    category: "web-browsing",
+    toolDefinition: {
+        type: "function",
+        name: "web_search",
+        description:
+            "Search the web for current information. Returns a comprehensive answer with source citations. Use for research, fact-finding, news, and any question needing up-to-date information.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description:
+                        "The search query — be specific and descriptive for best results",
+                },
+            },
+            required: ["query"],
+        },
+    },
+    executor: async (args) => {
+        const query = asNonEmptyString(args.query);
+        if (!query) return JSON.stringify({ error: "query must be a non-empty string" });
+        return perplexitySearch(query);
     },
 });
 

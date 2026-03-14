@@ -4,7 +4,7 @@
  * Powered by the Skills Registry (mirrors Lindy AI's skill system)
  * plus Browser (Kernel) and Sandbox (E2B) tool systems.
  *
- * Built-in tools (web_search_preview) are handled by OpenAI.
+ * Web search uses Perplexity Sonar via OpenRouter (custom skill).
  * Custom function-calling tools are driven by the skills registry
  * and executed server-side by skill executors.
  * Browser tools are routed to the Kernel browser executor.
@@ -25,11 +25,7 @@ export interface BuiltInTool {
   [key: string]: unknown;
 }
 
-export const builtInTools: BuiltInTool[] = [
-  {
-    type: "web_search_preview",
-  },
-];
+export const builtInTools: BuiltInTool[] = [];
 
 // ── Custom function-calling tools (from Skills Registry) ──────────────────
 

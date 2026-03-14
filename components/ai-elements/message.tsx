@@ -19,8 +19,38 @@ import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { harden } from "rehype-harden";
+
+// ── Custom rehype pipeline (fix [Image blocked] from rehype-harden) ────────
+// Streamdown's built-in harden uses imageBlockPolicy "indicator" which shows
+// ugly "[Image blocked: ...]" text for any image src it can't validate.
+// We override with "remove" so blocked images are silently dropped.
+const sanitizeSchema = {
+  ...defaultSchema,
+  protocols: {
+    ...defaultSchema.protocols,
+    href: [...(defaultSchema.protocols?.href ?? []), "tel"],
+  },
+};
+const customRehypePlugins = [
+  rehypeRaw,
+  [rehypeSanitize, sanitizeSchema],
+  [
+    harden,
+    {
+      allowedImagePrefixes: ["*"],
+      allowedLinkPrefixes: ["*"],
+      allowedProtocols: ["*"],
+      defaultOrigin: undefined,
+      allowDataImages: true,
+      imageBlockPolicy: "remove",
+    },
+  ],
+] as Parameters<typeof Streamdown>[0]["rehypePlugins"];
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -312,6 +342,7 @@ export const MessageResponse = memo(
         className
       )}
       plugins={{ code, mermaid, math, cjk }}
+      rehypePlugins={customRehypePlugins}
       {...props}
     />
   ),

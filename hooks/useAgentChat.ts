@@ -3,12 +3,13 @@
  *
  * Communicates with /api/agent via SSE (fetch + ReadableStream).
  * Manages messages, streaming state, tool call display, reasoning,
- * and task execution monitoring.
+ * task execution monitoring, and preview artifacts.
  */
 
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import type { PreviewArtifactData } from "@/components/ai-elements/preview-artifact";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface ToolCallInfo {
     id: string;
     call_id?: string;
     name: string;
-    type: "function_call" | "web_search_call";
+    type: "function_call";
     arguments: string;
     result?: string;
     status: "streaming" | "searching" | "executing" | "completed" | "error";
@@ -57,6 +58,7 @@ export function useAgentChat() {
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
     const [taskSteps, setTaskSteps] = useState<TaskStepInfo[]>([]);
     const [toolkitLogos, setToolkitLogos] = useState<Record<string, string>>({});
+    const [activePreview, setActivePreview] = useState<PreviewArtifactData | null>(null);
     const previousResponseIdRef = useRef<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -302,7 +304,7 @@ export function useAgentChat() {
                         name: data.name as string,
                         type: (data.type as ToolCallInfo["type"]) || "function_call",
                         arguments: "",
-                        status: data.type === "web_search_call" ? "searching" : "streaming",
+                        status: "streaming",
                     };
                     toolCalls.set(toolCall.id, toolCall);
                     updateAssistant({
@@ -386,6 +388,54 @@ export function useAgentChat() {
                     break;
                 }
 
+                // ── Preview artifact events ─────────────────────────
+                case "browser_live_view": {
+                    setActivePreview({
+                        id: (data.browserId as string) || `browser-${Date.now()}`,
+                        type: "browser",
+                        url: data.liveViewUrl as string,
+                        title: (data.title as string) || "Agent is browsing",
+                        currentUrl: data.currentUrl as string | undefined,
+                        status: "active",
+                    });
+                    break;
+                }
+
+                case "code_preview": {
+                    setActivePreview({
+                        id: (data.id as string) || `code-${Date.now()}`,
+                        type: "code",
+                        url: (data.url as string) || "",
+                        title: (data.title as string) || "Preview",
+                        status: "active",
+                        code: data.code as string | undefined,
+                        language: data.language as string | undefined,
+                    });
+                    break;
+                }
+
+                case "preview_update": {
+                    setActivePreview((prev) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            currentUrl: (data.currentUrl as string) ?? prev.currentUrl,
+                            status: (data.status as PreviewArtifactData["status"]) ?? prev.status,
+                            progress: (data.progress as number) ?? prev.progress,
+                            title: (data.title as string) ?? prev.title,
+                        };
+                    });
+                    break;
+                }
+
+                case "preview_complete": {
+                    setActivePreview((prev) => {
+                        if (!prev) return prev;
+                        return { ...prev, status: "complete" };
+                    });
+                    break;
+                }
+
                 case "done":
                     if (data.responseId) {
                         previousResponseIdRef.current = data.responseId as string;
@@ -412,10 +462,15 @@ export function useAgentChat() {
         setError(null);
         setCurrentTaskId(null);
         setTaskSteps([]);
+        setActivePreview(null);
         previousResponseIdRef.current = null;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
+    }, []);
+
+    const dismissPreview = useCallback(() => {
+        setActivePreview(null);
     }, []);
 
     return {
@@ -428,5 +483,7 @@ export function useAgentChat() {
         currentTaskId,
         taskSteps,
         toolkitLogos,
+        activePreview,
+        dismissPreview,
     };
 }

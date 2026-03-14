@@ -17,6 +17,10 @@ import {
     ReasoningContent,
     ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import {
+    BrowserPreviewCard,
+    CodePreviewPanel,
+} from "@/components/ai-elements/preview-artifact";
 import { PromptBox } from "@/components/ui/chatgpt-prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { useAgentChat, type AgentStatus } from "@/hooks/useAgentChat";
@@ -213,7 +217,7 @@ function ToolCallCard({
     toolkitLogos,
 }: {
     name: string;
-    type: "function_call" | "web_search_call";
+    type: "function_call";
     args: string;
     result?: string;
     status: string;
@@ -290,7 +294,7 @@ function ToolCallCard({
     }
 
     const isComposioMeta = name.startsWith("COMPOSIO_");
-    const isBuiltIn = type === "web_search_call" || (!isComposioMeta && !!toolLabels[name]);
+    const isBuiltIn = !isComposioMeta && !!toolLabels[name];
 
     // ── Infer toolkit name & beautiful display name ──
     let derivedDisplayName = toolLabels[name] || name;
@@ -486,7 +490,7 @@ function ToolCallCard({
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function AgentChat() {
-    const { messages, status, sendMessage, isLoading, toolkitLogos } = useAgentChat();
+    const { messages, status, sendMessage, isLoading, toolkitLogos, activePreview, dismissPreview } = useAgentChat();
 
     const handleSubmit = useCallback(
         (value: string, _image: string | null) => {
@@ -507,132 +511,155 @@ export default function AgentChat() {
     const isEmpty = messages.length === 0;
 
     return (
-        <div className="relative flex size-full flex-col overflow-hidden bg-background">
-            {/* Empty state */}
-            {isEmpty && (
-                <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/10">
-                            <ZapIcon className="size-7 text-primary" />
-                        </div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Autonomous Agent
-                        </h1>
-                        <p className="max-w-md text-center text-sm text-muted-foreground leading-relaxed">
-                            An AI that works for you — autonomously searching, analyzing,
-                            coding, and remembering. Powered by skills that free you from
-                            repetitive work.
-                        </p>
-                    </div>
-
-                    {/* Skill badges */}
-                    <div className="flex flex-wrap justify-center gap-2 max-w-md">
-                        {skillBadges.map((skill) => (
-                            <div
-                                key={skill.name}
-                                className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-xs text-muted-foreground"
-                            >
-                                <skill.icon className={`size-3 ${skill.color}`} />
-                                {skill.name}
+        <div className="relative flex size-full overflow-hidden bg-background">
+            {/* Main chat column */}
+            <div className={`relative flex flex-1 flex-col overflow-hidden transition-all duration-300 ${activePreview?.type === "code" ? "w-[55%]" : "w-full"}`}>
+                {/* Empty state */}
+                {isEmpty && (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/10">
+                                <ZapIcon className="size-7 text-primary" />
                             </div>
-                        ))}
+                            <h1 className="text-2xl font-semibold tracking-tight">
+                                Autonomous Agent
+                            </h1>
+                            <p className="max-w-md text-center text-sm text-muted-foreground leading-relaxed">
+                                An AI that works for you — autonomously searching, analyzing,
+                                coding, and remembering. Powered by skills that free you from
+                                repetitive work.
+                            </p>
+                        </div>
+
+                        {/* Skill badges */}
+                        <div className="flex flex-wrap justify-center gap-2 max-w-md">
+                            {skillBadges.map((skill) => (
+                                <div
+                                    key={skill.name}
+                                    className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-xs text-muted-foreground"
+                                >
+                                    <skill.icon className={`size-3 ${skill.color}`} />
+                                    {skill.name}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Conversation */}
-            {!isEmpty && (
-                <Conversation>
-                    <ConversationContent>
-                        {messages.map((message) => (
-                            <MessageBranch defaultBranch={0} key={message.key}>
-                                <MessageBranchContent>
-                                    <Message from={message.from}>
-                                        <div>
-                                            {/* Reasoning */}
-                                            {message.reasoning && (
-                                                <Reasoning duration={message.reasoning.duration}>
-                                                    <ReasoningTrigger />
-                                                    <ReasoningContent>
-                                                        {message.reasoning.content}
-                                                    </ReasoningContent>
-                                                </Reasoning>
-                                            )}
+                {/* Conversation */}
+                {!isEmpty && (
+                    <Conversation>
+                        <ConversationContent>
+                            {messages.map((message) => (
+                                <MessageBranch defaultBranch={0} key={message.key}>
+                                    <MessageBranchContent>
+                                        <Message from={message.from}>
+                                            <div>
+                                                {/* Reasoning */}
+                                                {message.reasoning && (
+                                                    <Reasoning duration={message.reasoning.duration}>
+                                                        <ReasoningTrigger />
+                                                        <ReasoningContent>
+                                                            {message.reasoning.content}
+                                                        </ReasoningContent>
+                                                    </Reasoning>
+                                                )}
 
-                                            {/* Tool calls */}
-                                            {message.tools && message.tools.length > 0 && (
-                                                <div className="mb-3 space-y-1">
-                                                    {message.tools.map((tool) => (
-                                                        <ToolCallCard
-                                                            key={tool.id}
-                                                            name={tool.name}
-                                                            type={tool.type}
-                                                            args={tool.arguments}
-                                                            result={tool.result}
-                                                            status={tool.status}
-                                                            toolkitLogos={toolkitLogos}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            )}
+                                                {/* Tool calls */}
+                                                {message.tools && message.tools.length > 0 && (
+                                                    <div className="mb-3 space-y-1">
+                                                        {message.tools.map((tool) => (
+                                                            <ToolCallCard
+                                                                key={tool.id}
+                                                                name={tool.name}
+                                                                type={tool.type}
+                                                                args={tool.arguments}
+                                                                result={tool.result}
+                                                                status={tool.status}
+                                                                toolkitLogos={toolkitLogos}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                )}
 
-                                            {/* Connect button — rendered at message level, NOT inside tool card */}
-                                            {(() => {
-                                                const link = findConnectLink(message.tools);
-                                                return link ? (
+                                                {/* Browser preview card (inline) */}
+                                                {activePreview?.type === "browser" && message.from === "assistant" && message.tools?.some(t => t.name.startsWith("browser_")) && (
                                                     <div className="mb-4">
-                                                        <ConnectButton
-                                                            url={link.url}
-                                                            toolkit={link.toolkit}
-                                                            logoUrl={toolkitLogos[link.toolkit]}
+                                                        <BrowserPreviewCard
+                                                            preview={activePreview}
+                                                            onDismiss={dismissPreview}
                                                         />
                                                     </div>
-                                                ) : null;
-                                            })()}
+                                                )}
 
-                                            {/* Message content — strip connect URLs since we render a button */}
-                                            <MessageContent>
-                                                <MessageResponse>
-                                                    {findConnectLink(message.tools)
-                                                        ? stripConnectUrls(message.content)
-                                                        : message.content}
-                                                </MessageResponse>
-                                            </MessageContent>
-                                        </div>
-                                    </Message>
-                                </MessageBranchContent>
-                            </MessageBranch>
-                        ))}
+                                                {/* Connect button — rendered at message level, NOT inside tool card */}
+                                                {(() => {
+                                                    const link = findConnectLink(message.tools);
+                                                    return link ? (
+                                                        <div className="mb-4">
+                                                            <ConnectButton
+                                                                url={link.url}
+                                                                toolkit={link.toolkit}
+                                                                logoUrl={toolkitLogos[link.toolkit]}
+                                                            />
+                                                        </div>
+                                                    ) : null;
+                                                })()}
 
-                        {/* Status indicator */}
-                        <StatusIndicator status={status} />
-                    </ConversationContent>
-                    <ConversationScrollButton />
-                </Conversation>
-            )}
+                                                {/* Message content — strip connect URLs since we render a button */}
+                                                <MessageContent>
+                                                    <MessageResponse>
+                                                        {findConnectLink(message.tools)
+                                                            ? stripConnectUrls(message.content)
+                                                            : message.content}
+                                                    </MessageResponse>
+                                                </MessageContent>
+                                            </div>
+                                        </Message>
+                                    </MessageBranchContent>
+                                </MessageBranch>
+                            ))}
 
-            {/* Bottom panel */}
-            <div className="grid shrink-0 gap-4 pt-4">
-                {isEmpty && (
-                    <Suggestions className="px-4">
-                        {suggestions.map((suggestion) => (
-                            <Suggestion
-                                key={suggestion}
-                                onClick={() => handleSuggestionClick(suggestion)}
-                                suggestion={suggestion}
-                            />
-                        ))}
-                    </Suggestions>
+                            {/* Status indicator */}
+                            <StatusIndicator status={status} />
+                        </ConversationContent>
+                        <ConversationScrollButton />
+                    </Conversation>
                 )}
-                <div className="w-full px-4 pb-4">
-                    <div className="mx-auto w-full max-w-3xl">
-                        <PromptBox
-                            onSubmit={handleSubmit}
-                            loading={isLoading}
-                        />
+
+                {/* Bottom panel */}
+                <div className="grid shrink-0 gap-4 pt-4">
+                    {isEmpty && (
+                        <Suggestions className="px-4">
+                            {suggestions.map((suggestion) => (
+                                <Suggestion
+                                    key={suggestion}
+                                    onClick={() => handleSuggestionClick(suggestion)}
+                                    suggestion={suggestion}
+                                />
+                            ))}
+                        </Suggestions>
+                    )}
+                    <div className="w-full px-4 pb-4">
+                        <div className="mx-auto w-full max-w-3xl">
+                            <PromptBox
+                                onSubmit={handleSubmit}
+                                loading={isLoading}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {/* Code preview side panel (v0-style) */}
+            {activePreview?.type === "code" && (
+                <div className="h-full w-[45%] shrink-0 animate-in slide-in-from-right duration-300">
+                    <CodePreviewPanel
+                        preview={activePreview}
+                        onClose={dismissPreview}
+                    />
+                </div>
+            )}
         </div>
     );
 }

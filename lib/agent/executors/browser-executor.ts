@@ -26,6 +26,7 @@ import {
 interface BrowserSession {
     navigator: BrowserNavigator;
     browserId: string;
+    liveViewUrl?: string;
 }
 
 /** Map of sessionId → browser state. Each task run gets its own browser. */
@@ -224,7 +225,7 @@ async function ensureBrowserConnection(sessionId: string): Promise<BrowserSessio
     if (existing) return existing;
 
     const manager = getKernelBrowserManager();
-    const instance = await manager.getOrCreateBrowser();
+    const instance = await manager.getOrCreateBrowser({ enableLiveView: true });
 
     const nav = new BrowserNavigator();
     await nav.connect(instance.cdpWsUrl);
@@ -232,10 +233,11 @@ async function ensureBrowserConnection(sessionId: string): Promise<BrowserSessio
     const session: BrowserSession = {
         navigator: nav,
         browserId: instance.id,
+        liveViewUrl: instance.liveViewUrl,
     };
 
     sessions.set(sessionId, session);
-    console.log(`[BrowserExecutor] New browser session: ${sessionId} → browser ${instance.id}`);
+    console.log(`[BrowserExecutor] New browser session: ${sessionId} → browser ${instance.id} (liveView=${!!instance.liveViewUrl})`);
     return session;
 }
 
@@ -248,6 +250,13 @@ async function closeBrowserSession(sessionId: string): Promise<void> {
     await manager.closeBrowser(session.browserId);
     sessions.delete(sessionId);
     console.log(`[BrowserExecutor] Closed browser session: ${sessionId}`);
+}
+
+/**
+ * Get the live view URL for a browser session, if available.
+ */
+export function getBrowserSessionLiveViewUrl(sessionId: string): string | undefined {
+    return sessions.get(sessionId)?.liveViewUrl;
 }
 
 /**
