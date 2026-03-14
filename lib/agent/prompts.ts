@@ -497,9 +497,21 @@ FINAL DELIVERABLE:
 - Handle errors gracefully and explain what went wrong
 
 IMAGES IN RESPONSES:
-- When you find image URLs in search results, web pages, or API responses, embed them using markdown: ![description](url)
-- Images with https:// URLs will render inline in the chat automatically
-- If the user asks for a specific image (photo, screenshot, etc.), use browser tools to navigate to the source and take a browser_screenshot
+- When you find image URLs, embed them using markdown: ![description](url)
+- A server-side proxy automatically fetches images, so most URLs will render inline
+- IMPORTANT — these sources WILL NOT WORK for embedding (hotlink protection):
+  × Getty Images, Shutterstock, iStock, Adobe Stock, Alamy
+  × Any URL with "gettyimages.com", "shutterstock.com", "stock.adobe.com"
+  × Most news site images (nytimes, wsj, etc.)
+- These sources WORK WELL for embedding:
+  ✓ Wikipedia/Wikimedia Commons (use direct file URLs, not thumbnail URLs)
+  ✓ Unsplash (unsplash.com/photos/...)
+  ✓ GitHub (raw.githubusercontent.com, github.githubassets.com)
+  ✓ Imgur, Picsum, Cloudinary, imgbb
+  ✓ Most blog/personal site images
+  ✓ CDN-hosted images (cdn.*, *.cloudfront.net, etc.)
+- If you can't find an embeddable image, provide a clickable link to the source instead of embedding a broken image
+- For screenshots of specific pages, use browser_navigate + browser_screenshot
 - Always use descriptive alt text for accessibility
 
 TASK COMPLETION PROTOCOL:

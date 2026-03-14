@@ -6,6 +6,9 @@
  * When the agent embeds images via markdown ![alt](url), the browser may block
  * cross-origin image loads (ORB/CORS). This proxy fetches them server-side and
  * serves them from the same origin, avoiding browser restrictions.
+ *
+ * On failure, returns a styled placeholder SVG instead of an error — this
+ * prevents Streamdown from showing "Image not available" text.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,6 +27,38 @@ const ALLOWED_TYPES = new Set([
 
 // Max image size: 10MB
 const MAX_SIZE = 10 * 1024 * 1024;
+
+/**
+ * Generate a styled placeholder SVG when the proxy can't fetch the image.
+ * This returns a valid image so Streamdown's onLoad fires (not onError),
+ * preventing the "Image not available" fallback text.
+ */
+function placeholderSVG(domain: string, reason: string): Response {
+    // Truncate domain for display
+    const displayDomain = domain.length > 30 ? domain.slice(0, 27) + "…" : domain;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80" viewBox="0 0 400 80">
+  <rect width="400" height="80" rx="8" fill="#1a1a2e"/>
+  <rect x="1" y="1" width="398" height="78" rx="7" fill="none" stroke="#333" stroke-width="1"/>
+  <text x="20" y="32" font-family="system-ui,sans-serif" font-size="13" fill="#888">
+    <tspan>📷</tspan>
+    <tspan dx="6" fill="#aaa">Image from</tspan>
+    <tspan dx="4" fill="#7c8aff" font-weight="500">${escapeXml(displayDomain)}</tspan>
+  </text>
+  <text x="20" y="56" font-family="system-ui,sans-serif" font-size="11" fill="#666">${escapeXml(reason)}</text>
+</svg>`;
+
+    return new Response(svg, {
+        status: 200,
+        headers: {
+            "Content-Type": "image/svg+xml",
+            "Cache-Control": "public, max-age=3600",
+        },
+    });
+}
+
+function escapeXml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 export async function GET(request: NextRequest) {
     const url = request.nextUrl.searchParams.get("url");
@@ -64,9 +99,10 @@ export async function GET(request: NextRequest) {
         });
 
         if (!response.ok) {
-            return NextResponse.json(
-                { error: `Upstream returned ${response.status}` },
-                { status: 502 }
+            // Return placeholder instead of error — prevents "Image not available"
+            return placeholderSVG(
+                parsed.hostname,
+                `Could not load — ${response.status} ${response.statusText}`
             );
         }
 
@@ -74,28 +110,19 @@ export async function GET(request: NextRequest) {
 
         // Validate content type — must be an image
         if (!ALLOWED_TYPES.has(contentType) && !contentType.startsWith("image/")) {
-            return NextResponse.json(
-                { error: "Response is not an image" },
-                { status: 415 }
-            );
+            return placeholderSVG(parsed.hostname, "Response was not an image");
         }
 
         // Check content length if available
         const contentLength = response.headers.get("content-length");
         if (contentLength && parseInt(contentLength) > MAX_SIZE) {
-            return NextResponse.json(
-                { error: "Image too large (max 10MB)" },
-                { status: 413 }
-            );
+            return placeholderSVG(parsed.hostname, "Image too large (max 10MB)");
         }
 
         const buffer = await response.arrayBuffer();
 
         if (buffer.byteLength > MAX_SIZE) {
-            return NextResponse.json(
-                { error: "Image too large (max 10MB)" },
-                { status: 413 }
-            );
+            return placeholderSVG(parsed.hostname, "Image too large (max 10MB)");
         }
 
         return new NextResponse(buffer, {
@@ -107,7 +134,7 @@ export async function GET(request: NextRequest) {
             },
         });
     } catch (error) {
-        const message = error instanceof Error ? error.message : "Proxy fetch failed";
-        return NextResponse.json({ error: message }, { status: 502 });
+        const reason = error instanceof Error ? error.message : "Connection failed";
+        return placeholderSVG(parsed.hostname, reason);
     }
 }
