@@ -25,6 +25,15 @@ import { parallelWebSearch, parallelExtract } from "./executors/parallel-search"
 import { searchKnowledge } from "./executors/embedding-search";
 import { executeSubAgent } from "./executors/sub-agent-executor";
 import { listSubAgents } from "./sub-agents";
+import {
+    listTriggerTypes,
+    createTrigger,
+    listActiveTriggers,
+    enableTrigger,
+    disableTrigger,
+    deleteTrigger,
+    getRecentEvents,
+} from "./triggers";
 
 // Force sub-agent registration on module load
 import "./sub-agents";
@@ -38,7 +47,8 @@ export type SkillCategory =
     | "email"
     | "calendar"
     | "code"
-    | "reasoning";
+    | "reasoning"
+    | "triggers";
 
 export interface Skill {
     name: string;
@@ -926,3 +936,245 @@ registerSkill({
     },
 });
 
+// ── Trigger Management Skills ──────────────────────────────────────────────
+
+registerSkill({
+    name: "list_trigger_types",
+    description:
+        "Discover available trigger types for a connected app/toolkit. Returns trigger slugs, descriptions, and required config. Use this to find out what triggers are available before creating one.",
+    category: "triggers",
+    toolDefinition: {
+        type: "function",
+        name: "list_trigger_types",
+        description:
+            "List available trigger types for a toolkit (e.g., 'github', 'gmail', 'slack'). Returns trigger slugs and descriptions.",
+        parameters: {
+            type: "object",
+            properties: {
+                toolkit: {
+                    type: "string",
+                    description:
+                        "The toolkit/app slug to list triggers for (e.g., 'github', 'gmail', 'slack', 'google_calendar'). Leave empty to list all.",
+                },
+            },
+            required: [],
+        },
+    },
+    executor: async (args) => {
+        const toolkit = args.toolkit as string | undefined;
+        const types = await listTriggerTypes(toolkit);
+
+        if (types.length === 0) {
+            return JSON.stringify({
+                result: toolkit
+                    ? `No trigger types found for toolkit "${toolkit}". Make sure the toolkit slug is correct (e.g., 'github', 'gmail', 'slack').`
+                    : "No trigger types found. Ensure COMPOSIO_API_KEY is configured.",
+                suggestion:
+                    "Try list_trigger_types with a specific toolkit slug like 'github' or 'gmail'.",
+            });
+        }
+
+        return JSON.stringify({
+            count: types.length,
+            toolkit: toolkit || "all",
+            triggers: types.map((t) => ({
+                slug: t.slug,
+                name: t.name,
+                description: t.description,
+                toolkit: t.toolkit.name,
+            })),
+        });
+    },
+});
+
+registerSkill({
+    name: "create_trigger",
+    description:
+        "Create a new event-driven trigger for the user. The user must have a connected account for the relevant app. Triggers fire events when specific things happen (e.g., new email, GitHub commit, Slack message).",
+    category: "triggers",
+    toolDefinition: {
+        type: "function",
+        name: "create_trigger",
+        description:
+            "Create a new trigger that fires when an event occurs in a connected app. Requires the trigger slug (from list_trigger_types) and optional config.",
+        parameters: {
+            type: "object",
+            properties: {
+                slug: {
+                    type: "string",
+                    description:
+                        "The trigger type slug (e.g., 'GITHUB_COMMIT_EVENT', 'GMAIL_NEW_EMAIL'). Use list_trigger_types to discover available slugs.",
+                },
+                config: {
+                    type: "object",
+                    description:
+                        "Optional trigger configuration. Each trigger type may have different config fields (e.g., repo name for GitHub, label for Gmail).",
+                },
+                user_id: {
+                    type: "string",
+                    description:
+                        "The user ID for the trigger. Defaults to 'default_user' if not specified.",
+                },
+            },
+            required: ["slug"],
+        },
+    },
+    executor: async (args) => {
+        const slug = args.slug as string;
+        const config = args.config as Record<string, unknown> | undefined;
+        const userId = (args.user_id as string) || "default_user";
+
+        const result = await createTrigger(userId, slug, config);
+        return JSON.stringify(result);
+    },
+});
+
+registerSkill({
+    name: "list_active_triggers",
+    description:
+        "List all currently active triggers. Shows trigger IDs, names, states, and configurations.",
+    category: "triggers",
+    toolDefinition: {
+        type: "function",
+        name: "list_active_triggers",
+        description:
+            "List all active trigger instances. Returns trigger IDs, names, and current status.",
+        parameters: {
+            type: "object",
+            properties: {},
+            required: [],
+        },
+    },
+    executor: async () => {
+        const triggers = await listActiveTriggers();
+
+        if (triggers.length === 0) {
+            return JSON.stringify({
+                result: "No active triggers found.",
+                suggestion:
+                    "Use create_trigger to set up a new trigger, or list_trigger_types to discover what's available.",
+            });
+        }
+
+        return JSON.stringify({
+            count: triggers.length,
+            triggers: triggers.map((t) => ({
+                id: t.id,
+                name: t.triggerName,
+                state: t.state,
+                config: t.triggerConfig,
+                updatedAt: t.updatedAt,
+            })),
+        });
+    },
+});
+
+registerSkill({
+    name: "manage_trigger",
+    description:
+        "Enable, disable, or delete an existing trigger by its ID. Use list_active_triggers first to find trigger IDs.",
+    category: "triggers",
+    toolDefinition: {
+        type: "function",
+        name: "manage_trigger",
+        description:
+            "Manage an existing trigger: enable, disable, or delete it.",
+        parameters: {
+            type: "object",
+            properties: {
+                trigger_id: {
+                    type: "string",
+                    description: "The trigger instance ID to manage.",
+                },
+                action: {
+                    type: "string",
+                    enum: ["enable", "disable", "delete"],
+                    description:
+                        "The action to perform: 'enable' to activate, 'disable' to pause, 'delete' to remove permanently.",
+                },
+            },
+            required: ["trigger_id", "action"],
+        },
+    },
+    executor: async (args) => {
+        const triggerId = args.trigger_id as string;
+        const action = args.action as "enable" | "disable" | "delete";
+
+        let result;
+        switch (action) {
+            case "enable":
+                result = await enableTrigger(triggerId);
+                break;
+            case "disable":
+                result = await disableTrigger(triggerId);
+                break;
+            case "delete":
+                result = await deleteTrigger(triggerId);
+                break;
+            default:
+                return JSON.stringify({
+                    error: `Invalid action "${action}". Use 'enable', 'disable', or 'delete'.`,
+                });
+        }
+
+        return JSON.stringify({
+            action,
+            triggerId,
+            ...result,
+        });
+    },
+});
+
+registerSkill({
+    name: "get_trigger_events",
+    description:
+        "Get recent events received from triggers. Shows the latest events with their payloads. Useful for checking if triggers are working.",
+    category: "triggers",
+    toolDefinition: {
+        type: "function",
+        name: "get_trigger_events",
+        description:
+            "Get recent trigger events. Optionally filter by trigger ID or slug.",
+        parameters: {
+            type: "object",
+            properties: {
+                trigger_id: {
+                    type: "string",
+                    description:
+                        "Optional trigger ID or slug to filter events by.",
+                },
+                limit: {
+                    type: "number",
+                    description:
+                        "Maximum number of events to return. Defaults to 10.",
+                },
+            },
+            required: [],
+        },
+    },
+    executor: async (args) => {
+        const triggerId = args.trigger_id as string | undefined;
+        const limit = (args.limit as number) || 10;
+
+        const events = getRecentEvents(triggerId, limit);
+
+        if (events.length === 0) {
+            return JSON.stringify({
+                result: "No trigger events found.",
+                suggestion: triggerId
+                    ? `No events for trigger "${triggerId}". The trigger may not have fired yet, or the ID may be incorrect.`
+                    : "No events received yet. Create a trigger and wait for it to fire, or check that your webhook endpoint is configured.",
+            });
+        }
+
+        return JSON.stringify({
+            count: events.length,
+            events: events.map((e) => ({
+                triggerSlug: e.triggerSlug,
+                toolkitSlug: e.toolkitSlug,
+                receivedAt: e.receivedAt,
+                payload: e.payload,
+            })),
+        });
+    },
+});

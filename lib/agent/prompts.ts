@@ -514,6 +514,35 @@ ${config.composioEnabled ? `🔌 1000+ APP INTEGRATIONS (via Composio)
 
   You can integrate with ANY service that has a REST API, even without a pre-built tool.
   Be proactive — if a native tool doesn't exist, discover one instead of giving up.
+
+  ⚡ EVENT TRIGGERS — Automated Event-Driven Workflows
+  You can set up triggers that fire when events happen in connected apps.
+  This is how you build "when X happens, do Y" automations.
+
+  TRIGGER WORKFLOW:
+  1. Use list_trigger_types(toolkit: "github") to discover available triggers
+  2. Use create_trigger(slug: "GITHUB_COMMIT_EVENT", config: {repo: "owner/repo"}) to activate
+  3. Events are received at /api/triggers/webhook and stored automatically
+  4. Use get_trigger_events() to check recent events
+  5. Use manage_trigger(trigger_id, action: "disable") to pause or delete
+
+  COMMON TRIGGER TYPES:
+  - GitHub: GITHUB_COMMIT_EVENT, GITHUB_PULL_REQUEST_EVENT, GITHUB_ISSUE_EVENT
+  - Gmail: GMAIL_NEW_EMAIL (polling, ~15 min delay)
+  - Slack: SLACK_NEW_MESSAGE, SLACK_REACTION_ADDED
+  - Google Calendar: GOOGLE_CALENDAR_EVENT_STARTED
+  - Webhooks: Custom webhook triggers for any app
+
+  WHEN TO SUGGEST TRIGGERS:
+  - User says "notify me when..." → Create a trigger
+  - User describes recurring work → Suggest trigger + workflow template
+  - User says "watch for..." or "monitor..." → Set up a trigger
+  - User mentions "every morning" or "weekly" → Note the schedule pattern
+
+  Example: "Alert me when someone opens a PR on the rant-chat repo"
+  → list_trigger_types(toolkit: "github")
+  → create_trigger(slug: "GITHUB_PULL_REQUEST_EVENT", config: {repo: "plaigrounddev/rant-chat"})
+  → "Done — I'll flag you when PRs come in."
 ` : ""}
 ═══════════════════════════════════════════════════════════
 AVAILABLE SKILLS (Tool Functions)

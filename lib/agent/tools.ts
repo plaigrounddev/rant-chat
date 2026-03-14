@@ -99,6 +99,7 @@ type ToolMode =
   | "design"
   | "desktop"
   | "integrations"
+  | "triggers"
   | "general";
 
 /** Core skills that are ALWAYS available regardless of intent. */
@@ -136,6 +137,15 @@ const DESIGN_SKILL_NAMES = new Set([
 /** Integration-discovery skills. */
 const INTEGRATION_SKILL_NAMES = new Set([
   "discover_integration",
+]);
+
+/** Trigger management skills. */
+const TRIGGER_SKILL_NAMES = new Set([
+  "list_trigger_types",
+  "create_trigger",
+  "list_active_triggers",
+  "manage_trigger",
+  "get_trigger_events",
 ]);
 
 /** Sandbox tools to include for coding (excludes desktop tools). */
@@ -226,6 +236,15 @@ export function classifyIntent(message: string): ToolMode[] {
     modes.push("integrations");
   }
 
+  // Trigger/event signals
+  if (
+    /\b(trigger|automat|schedule|when.*receive|event|webhook|notify.*when|watch.*for|monitor.*for|cron|recurring|every\s*(day|week|hour|morning|monday|friday))\b/.test(
+      lower
+    )
+  ) {
+    modes.push("triggers");
+  }
+
   // If no specific signals detected, return general (all tools)
   if (modes.length === 0) {
     modes.push("general");
@@ -278,8 +297,15 @@ export function getFilteredAgentTools(
   // Add integration skills
   if (modes.includes("integrations")) {
     for (const name of INTEGRATION_SKILL_NAMES) includedSkillNames.add(name);
+    for (const name of TRIGGER_SKILL_NAMES) includedSkillNames.add(name);
     // Also include research for discovering APIs
     for (const name of RESEARCH_SKILL_NAMES) includedSkillNames.add(name);
+  }
+
+  // Add trigger management skills
+  if (modes.includes("triggers")) {
+    for (const name of TRIGGER_SKILL_NAMES) includedSkillNames.add(name);
+    for (const name of INTEGRATION_SKILL_NAMES) includedSkillNames.add(name);
   }
 
   // Filter custom tools to only included names
