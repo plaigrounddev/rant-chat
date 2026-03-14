@@ -106,9 +106,9 @@ registerSubAgent({
     name: "Frontend Design Agent",
     description:
         "Creates distinctive, production-grade frontend interfaces with exceptional design quality. " +
-        "Uses Gemini 3 Pro for creative code generation. Best for: websites, landing pages, dashboards, " +
+        "Uses Gemini 3 Flash for creative code generation. Best for: websites, landing pages, dashboards, " +
         "React components, HTML/CSS layouts, posters, and any visual web UI.",
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview",
     systemPrompt: FRONTEND_DESIGN_PROMPT,
     tools: ["sandbox"],
     maxRounds: 12,

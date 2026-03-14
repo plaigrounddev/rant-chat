@@ -861,7 +861,7 @@ registerSkill({
         "DELEGATE a specialized task to a sub-agent. The sub-agent runs autonomously with its own model and tools, " +
         "then returns results back to you. Available sub-agents:\n" +
         "  • frontend-design — Creates stunning, production-grade web interfaces (websites, dashboards, landing pages, " +
-        "React components) using Gemini 3 Pro. Has full sandbox access to write code, install packages, and run dev servers.\n\n" +
+        "React components) using Gemini 3 Flash. Has full sandbox access to write code, install packages, and run dev servers.\n\n" +
         "USE THIS when the user asks to build any visual web UI, page, component, poster, or application. " +
         "The design agent produces much higher quality frontend code than you can alone.",
     category: "utilities",
