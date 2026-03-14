@@ -58,4 +58,13 @@ crons.interval(
     internal.automations.cleanupStaleTasks,
 );
 
+// 🤖 Execute pending tasks — every 2 minutes
+// Claims the next pending task from the queue and calls
+// the headless agent endpoint to auto-run it.
+crons.interval(
+    "execute pending tasks",
+    { minutes: 2 },
+    internal.automations.executeNextTask,
+);
+
 export default crons;

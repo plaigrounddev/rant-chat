@@ -330,6 +330,100 @@ export const cleanupStaleTasks = internalMutation({
     },
 });
 
+// ── 6. Execute Next Pending Task ───────────────────────────────────────
+// Every 2 minutes: Claims the next pending task from the queue and
+// calls the headless agent endpoint to execute it automatically.
+// This is the "last mile" — it makes cron-enqueued tasks actually run.
+
+export const executeNextTask = internalAction({
+    args: {},
+    handler: async (ctx) => {
+        const startTime = Date.now();
+
+        // Claim next pending task atomically
+        const task = await ctx.runMutation(internal.taskQueue.claimNext, {
+            workflowRunId: `auto_${Date.now()}`,
+        });
+
+        if (!task) return; // Nothing to execute
+
+        console.log(
+            `[Automations] 🤖 Executing task: ${task.workflowType || "general"} | ${task.instructions.slice(0, 80)}...`
+        );
+
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+        const apiSecret = process.env.AGENT_INTERNAL_SECRET;
+
+        if (!appUrl || !apiSecret) {
+            console.error(
+                "[Automations] NEXT_PUBLIC_APP_URL or AGENT_INTERNAL_SECRET not set"
+            );
+            // Can't execute — leave task in "running" for stale-task cleanup
+            await ctx.runMutation(internal.automations.logAutomation, {
+                automationType: "execute_task",
+                status: "failed",
+                details:
+                    "NEXT_PUBLIC_APP_URL or AGENT_INTERNAL_SECRET not configured",
+            });
+            return;
+        }
+
+        try {
+            // Call the headless agent endpoint
+            const response = await fetch(`${appUrl}/api/agent/execute`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    instructions: task.instructions,
+                    taskId: task._id,
+                    apiSecret,
+                }),
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(
+                    `Agent endpoint returned ${response.status}: ${errText.slice(0, 200)}`
+                );
+            }
+
+            const result = await response.json();
+
+            // Mark task as completed
+            await ctx.runMutation(internal.taskQueue.markComplete, {
+                taskId: task._id,
+            });
+
+            await ctx.runMutation(internal.automations.logAutomation, {
+                automationType: "execute_task",
+                status: "completed",
+                details: `${task.workflowType || "general"}: ${result.toolsUsed?.join(", ") || "no tools"} (${result.rounds} rounds)`,
+                itemsProcessed: 1,
+                durationMs: Date.now() - startTime,
+            });
+
+            console.log(
+                `[Automations] ✅ Task done | type=${task.workflowType || "general"} | rounds=${result.rounds} | tools=${result.toolsUsed?.join(", ") || "none"}`
+            );
+        } catch (err) {
+            const message =
+                err instanceof Error ? err.message : "Unknown error";
+            console.error(`[Automations] ❌ Task execution failed:`, message);
+
+            // Mark task as failed so it doesn't block the queue
+            // We reuse the by_status index to find it
+            // Note: markComplete checks status === "running", so we need a dedicated fail path
+            // For now, the stale task cleanup (30 min) will catch this
+            await ctx.runMutation(internal.automations.logAutomation, {
+                automationType: "execute_task",
+                status: "failed",
+                details: `${task.workflowType || "general"}: ${message}`,
+                durationMs: Date.now() - startTime,
+            });
+        }
+    },
+});
+
 // ── Helper: Find Users for Automation ──────────────────────────────────
 // Returns all users who should receive automated workflows.
 // In the future this can be filtered by user preferences/settings.
@@ -346,3 +440,4 @@ export const findUsersForAutomation = internalMutation({
         return users;
     },
 });
+
