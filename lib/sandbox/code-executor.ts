@@ -219,7 +219,7 @@ export class CodeExecutor {
                 case "javascript":
                     assignments.push(`const ${key} = ${serialized};`);
                     break;
-                case "bash":
+                case "bash": {
                     // For bash, export as environment variables
                     // Use single quotes and escape embedded single quotes to prevent injection
                     const escaped = typeof value === "string"
@@ -229,6 +229,7 @@ export class CodeExecutor {
                         `export ${key}='${escaped}'`
                     );
                     break;
+                }
             }
         }
 

@@ -237,6 +237,10 @@ export class DesktopController {
                 if (action.x == null || action.y == null) throw new Error("move requires x and y coordinates");
                 await this.moveMouse(action.x, action.y);
                 break;
+            default: {
+                const _exhaustive: never = action.type;
+                throw new Error(`Unknown action type: ${_exhaustive}`);
+            }
         }
     }
 

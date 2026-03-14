@@ -139,6 +139,10 @@ export class KernelBrowserManager {
             if (browser.expiresAt < now) {
                 browser.status = "terminated";
                 this.activeBrowsers.delete(id);
+                // Fire-and-forget remote cleanup to avoid orphaned Kernel browsers
+                this.kernel.browsers.deleteByID(id).catch((err: unknown) => {
+                    console.warn(`[KernelBrowserManager] Failed to clean up expired browser ${id}:`, err);
+                });
             }
         }
         return Array.from(this.activeBrowsers.values());
