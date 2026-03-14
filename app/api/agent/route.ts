@@ -28,6 +28,8 @@ import {
     isComposioEnabled,
     getToolkitLogos,
 } from "@/lib/agent/composio";
+import { cleanupBrowserSession } from "@/lib/agent/executors/browser-executor";
+import { cleanupSandboxSession } from "@/lib/agent/executors/sandbox-executor";
 
 // Force skills registration on module load
 import "@/lib/agent/skills";
@@ -377,7 +379,7 @@ async function runAgentLoop(
                                         // Route to Composio or our custom skills
                                         const result = isComposioTool(fc.name)
                                             ? await executeComposioTool(fc.name, args, fc.call_id)
-                                            : await executeTool(fc.name, args);
+                                            : await executeTool(fc.name, args, taskRun.id);
 
                                         // Log tool result to task store
                                         const existingStep = taskRun.steps.find(
@@ -484,6 +486,9 @@ async function runAgentLoop(
                                 sendSSE("done", {
                                     responseId: currentResponseId,
                                 });
+                                // Clean up per-session cloud resources
+                                await cleanupBrowserSession(taskRun.id).catch(() => { });
+                                await cleanupSandboxSession(taskRun.id).catch(() => { });
                                 ws!.close();
                                 close();
                             } else if (isMaxedOut) {
@@ -499,6 +504,9 @@ async function runAgentLoop(
                                 sendSSE("done", {
                                     responseId: currentResponseId,
                                 });
+                                // Clean up per-session cloud resources
+                                await cleanupBrowserSession(taskRun.id).catch(() => { });
+                                await cleanupSandboxSession(taskRun.id).catch(() => { });
                                 ws!.close();
                                 close();
                             } else {
