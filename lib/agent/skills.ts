@@ -20,6 +20,7 @@ import { memoryStore } from "./memory";
 import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
+import { secretsStore } from "./secrets";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -475,7 +476,6 @@ registerSkill({
 
 // ── Secrets Management — Encrypted API Key Storage ───────────────────────
 
-import { secretsStore } from "./secrets";
 
 registerSkill({
     name: "store_secret",
@@ -543,7 +543,9 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const name = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
+        const name = typeof args.name === "string"
+            ? args.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_")
+            : "";
         if (!name) return JSON.stringify({ error: "name must be a non-empty string" });
 
         const value = secretsStore.get(name);
@@ -608,7 +610,9 @@ registerSkill({
         },
     },
     executor: async (args) => {
-        const name = typeof args.name === "string" ? args.name.trim().toLowerCase() : "";
+        const name = typeof args.name === "string"
+            ? args.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_")
+            : "";
         if (!name) return JSON.stringify({ error: "name must be a non-empty string" });
 
         const deleted = secretsStore.delete(name);

@@ -17,7 +17,7 @@ import * as path from "path";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
+const IV_LENGTH = 12; // 96-bit nonce — recommended for AES-GCM
 const AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32; // 256 bits
 const SECRETS_FILE = path.join(process.cwd(), "data", "secrets.json");
@@ -54,8 +54,11 @@ function getEncryptionKey(): Buffer {
         process.env.SECRETS_ENCRYPTION_KEY = key;
     }
 
-    // Derive a 32-byte key from the env var using SHA-256
-    return crypto.createHash("sha256").update(key).digest();
+    // Derive a 32-byte key using HKDF (HMAC-based Key Derivation Function)
+    const ikm = Buffer.from(key);
+    const salt = Buffer.from("rantchat-secrets-v1"); // constant salt
+    const info = Buffer.from("aes-256-gcm-encryption");
+    return Buffer.from(crypto.hkdfSync("sha256", ikm, salt, info, KEY_LENGTH));
 }
 
 // ── Encrypt / Decrypt ──────────────────────────────────────────────────────
@@ -110,7 +113,10 @@ function readSecrets(): SecretsFile {
 
 function writeSecrets(data: SecretsFile): void {
     ensureDataDir();
-    fs.writeFileSync(SECRETS_FILE, JSON.stringify(data, null, 2), "utf8");
+    // Atomic write: write to temp file, then rename to prevent corruption
+    const tmpFile = SECRETS_FILE + ".tmp";
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf8");
+    fs.renameSync(tmpFile, SECRETS_FILE);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -121,6 +127,15 @@ export const secretsStore = {
      * Overwrites if the name already exists.
      */
     store(name: string, value: string): void {
+        if (!name || typeof name !== "string") {
+            throw new Error("Secret name must be a non-empty string");
+        }
+        if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+            throw new Error("Secret name must not contain path separators");
+        }
+        if (name.length > 256) {
+            throw new Error("Secret name must be 256 characters or fewer");
+        }
         const secrets = readSecrets();
         secrets.secrets[name] = encrypt(value);
         writeSecrets(secrets);
