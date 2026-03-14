@@ -4,10 +4,15 @@
  * Uses Kernel's managed auth profiles to persist browser sessions (cookies,
  * localStorage) across runs. Sessions can last up to 72 hours.
  *
+ * Auth profiles are persisted to disk (.rantchat/auth-profiles.json) so
+ * sessions survive process restarts.
+ *
  * Future integration point for LastPass / 1Password / credential managers.
  */
 
 import type { BrowserContext } from "playwright";
+import * as fs from "fs";
+import * as path from "path";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,11 +45,47 @@ export interface AuthProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Persistence helpers
+// ---------------------------------------------------------------------------
+
+const DATA_DIR = path.join(process.cwd(), ".rantchat");
+const PROFILES_FILE = path.join(DATA_DIR, "auth-profiles.json");
+
+function loadProfilesFromDisk(): Map<string, AuthProfile> {
+    try {
+        if (fs.existsSync(PROFILES_FILE)) {
+            const raw = fs.readFileSync(PROFILES_FILE, "utf-8");
+            const entries: [string, AuthProfile][] = JSON.parse(raw);
+            return new Map(entries);
+        }
+    } catch (error) {
+        console.warn("[BrowserAuthManager] Failed to load profiles from disk:", error);
+    }
+    return new Map();
+}
+
+function saveProfilesToDisk(profiles: Map<string, AuthProfile>): void {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        const entries = Array.from(profiles.entries());
+        fs.writeFileSync(PROFILES_FILE, JSON.stringify(entries, null, 2), "utf-8");
+    } catch (error) {
+        console.warn("[BrowserAuthManager] Failed to save profiles to disk:", error);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
 
 export class BrowserAuthManager {
-    private profiles: Map<string, AuthProfile> = new Map();
+    private profiles: Map<string, AuthProfile>;
+
+    constructor() {
+        this.profiles = loadProfilesFromDisk();
+    }
 
     /**
      * Save the current browser session (cookies + localStorage) for a profile.
@@ -105,6 +146,7 @@ export class BrowserAuthManager {
         profile.sessionData = sessionData;
         profile.updatedAt = new Date().toISOString();
         this.profiles.set(profileId, profile);
+        saveProfilesToDisk(this.profiles);
 
         console.log(
             `[BrowserAuthManager] Session saved for profile ${profileId} (${cookies.length} cookies)`
@@ -144,11 +186,15 @@ export class BrowserAuthManager {
             );
         }
 
-        // Restore localStorage (requires navigating to the domain first)
-        const pages = context.pages();
-        const page = pages.length > 0 ? pages[0] : null;
-        if (page && Object.keys(localStorage).length > 0) {
+        // Restore localStorage — navigate to the saved domain first so
+        // window.localStorage targets the correct origin
+        if (Object.keys(localStorage).length > 0) {
+            const page = context.pages()[0] ?? await context.newPage();
             try {
+                const targetUrl = profile.domain.startsWith("http")
+                    ? profile.domain
+                    : `https://${profile.domain}`;
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
                 await page.evaluate((data: Record<string, string>) => {
                     for (const [key, value] of Object.entries(data)) {
                         window.localStorage.setItem(key, value);
@@ -172,6 +218,7 @@ export class BrowserAuthManager {
      */
     clearSession(profileId: string): void {
         this.profiles.delete(profileId);
+        saveProfilesToDisk(this.profiles);
         console.log(`[BrowserAuthManager] Session cleared for profile ${profileId}`);
     }
 

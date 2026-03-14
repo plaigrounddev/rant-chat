@@ -28,6 +28,7 @@ export interface BrowserInstance {
     createdAt: Date;
     expiresAt: Date;
     status: "creating" | "running" | "paused" | "terminated";
+    creationOptions: BrowserCreateOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,19 @@ export class KernelBrowserManager {
             if (options.profileId) {
                 createParams.profile = { id: options.profileId };
             }
+            if (options.enableLiveView !== undefined) {
+                createParams.enable_live_view = options.enableLiveView;
+            }
+            if (options.enableRecording !== undefined) {
+                createParams.enable_recording = options.enableRecording;
+            }
+            if (options.viewportWidth || options.viewportHeight) {
+                createParams.viewport = {
+                    width: options.viewportWidth ?? 1280,
+                    height: options.viewportHeight ?? 720,
+                };
+            }
+            createParams.timeout_ms = timeoutMs;
 
             const kernelBrowser = await this.kernel.browsers.create(createParams);
 
@@ -75,6 +89,7 @@ export class KernelBrowserManager {
                 createdAt: new Date(),
                 expiresAt: new Date(Date.now() + timeoutMs),
                 status: "running",
+                creationOptions: options,
             };
 
             this.activeBrowsers.set(instance.id, instance);
@@ -129,12 +144,16 @@ export class KernelBrowserManager {
     }
 
     async getOrCreateBrowser(options: BrowserCreateOptions = {}): Promise<BrowserInstance> {
+        // Match by profileId to prevent session leakage across profiles
         const existing = Array.from(this.activeBrowsers.values()).find(
-            (b) => b.status === "running" && b.expiresAt > new Date()
+            (b) =>
+                b.status === "running" &&
+                b.expiresAt > new Date() &&
+                (b.creationOptions.profileId ?? "") === (options.profileId ?? "")
         );
 
         if (existing) {
-            console.log(`[KernelBrowserManager] Reusing existing browser: ${existing.id}`);
+            console.log(`[KernelBrowserManager] Reusing existing browser: ${existing.id} (profile=${options.profileId ?? 'default'})`);
             return existing;
         }
 

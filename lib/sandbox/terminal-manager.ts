@@ -6,6 +6,7 @@
  */
 
 import type { Sandbox } from "@e2b/code-interpreter";
+import { shellEscape } from "./filesystem-manager";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,7 +65,7 @@ export class TerminalManager {
 
             // Wrap with cd if cwd is specified
             const fullCommand = options?.cwd
-                ? `${envPrefix}cd "${options.cwd}" && ${command}`
+                ? `${envPrefix}cd ${shellEscape(options.cwd)} && ${command}`
                 : `${envPrefix}${command}`;
 
             const result = await this.sandbox.commands.run(fullCommand, {
@@ -96,7 +97,7 @@ export class TerminalManager {
         manager: PackageManager,
         packages: string[]
     ): Promise<CommandResult> {
-        const packageList = packages.join(" ");
+        const packageList = packages.map((p) => shellEscape(p)).join(" ");
 
         const commands: Record<PackageManager, string> = {
             pip: `pip install ${packageList}`,
@@ -138,6 +139,9 @@ export class TerminalManager {
      * Stop a running process by PID.
      */
     async stopProcess(pid: string): Promise<void> {
+        if (!/^\d+$/.test(pid)) {
+            throw new Error(`Invalid PID: ${pid}`);
+        }
         await this.runCommand(`kill -9 ${pid} 2>/dev/null || true`);
         console.log(`[TerminalManager] Stopped process: PID ${pid}`);
     }
@@ -170,7 +174,7 @@ export class TerminalManager {
      * Check if a command/tool is available in the sandbox.
      */
     async hasCommand(command: string): Promise<boolean> {
-        const result = await this.runCommand(`which ${command} 2>/dev/null`);
+        const result = await this.runCommand(`which ${shellEscape(command)} 2>/dev/null`);
         return result.success;
     }
 
@@ -197,7 +201,7 @@ export class TerminalManager {
      */
     async downloadUrl(url: string, destPath: string): Promise<CommandResult> {
         return this.runCommand(
-            `curl -fsSL -o "${destPath}" "${url}"`,
+            `curl -fsSL -o ${shellEscape(destPath)} ${shellEscape(url)}`,
             { timeoutMs: 60000 }
         );
     }

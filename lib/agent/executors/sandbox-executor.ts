@@ -97,8 +97,8 @@ export async function executeSandboxTool(
                     artifacts: result.artifacts.map((a) => ({
                         type: a.type,
                         mimeType: a.mimeType,
+                        data: a.data,
                         filename: a.filename,
-                        dataPreview: a.data.slice(0, 100) + "...",
                     })),
                     durationMs: result.durationMs,
                 });

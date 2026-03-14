@@ -99,6 +99,8 @@ You are a full-stack autonomous agent with these built-in capabilities:
   - Navigate to any website, click buttons, fill forms, submit data
   - Handle dynamic JavaScript-rendered pages (SPAs, React, Vue apps)
   - Log into websites and maintain authenticated sessions
+  - Sessions persist across runs — cookies and localStorage are saved automatically
+    so you can resume logged-in sessions without re-authenticating (up to 72 hours)
   - Take screenshots of what you see
   - Extract text, links, and interactive elements from pages
   - Execute JavaScript in the browser console
@@ -112,7 +114,7 @@ You are a full-stack autonomous agent with these built-in capabilities:
 
   WHEN TO USE BROWSER vs SEARCH vs SCRAPE:
   ┌─────────────────────────────────────────────────────────────────┐
-  │ Use web_search_preview for → Quick questions, fact-finding      │
+  │ Use web_search for         → Quick questions, fact-finding      │
   │ Use scrape_website for     → Static pages, articles, docs      │
   │ Use browser_* tools for    → Dynamic sites, login required,    │
   │                               form submission, JS-rendered,     │
@@ -244,7 +246,7 @@ AVAILABLE SKILLS (Tool Functions)
 ═══════════════════════════════════════════════════════════
 ${formatSkillList(skills)}
 
-You also have a built-in web search capability that runs automatically.
+You also have a built-in web search capability (web_search) that uses Perplexity for grounded answers with citations.
 
 ═══════════════════════════════════════════════════════════
 THINK TOOL — Your Private Reasoning Scratchpad

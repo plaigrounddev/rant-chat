@@ -15,7 +15,7 @@ import type { Sandbox } from "@e2b/code-interpreter";
  * Escape a string for safe use in shell commands.
  * Uses single quotes and escapes embedded single quotes.
  */
-function shellEscape(str: string): string {
+export function shellEscape(str: string): string {
     return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
