@@ -17,7 +17,7 @@
 
 import { NextRequest } from "next/server";
 import WebSocket from "ws";
-import { getAgentTools, getCustomTools, executeTool } from "@/lib/agent/tools";
+import { getAgentTools, getFilteredAgentTools, getCustomTools, executeTool } from "@/lib/agent/tools";
 import { buildSystemPrompt } from "@/lib/agent/prompts";
 import { getTemplate } from "@/lib/agent/prompt-templates";
 import { taskStore } from "@/lib/agent/task-store";
@@ -165,9 +165,9 @@ async function runAgentLoop(
         conn.on("open", () => {
             sendSSE("status", { type: "connected" });
 
-            // Build the initial request with full tool suite
-            // Merge our custom skills + Composio's meta tools
-            const agentTools = [...getAgentTools(), ...composioTools];
+            // Build the initial request with intent-filtered tool suite
+            // Classify user intent and only expose relevant tools (Lindy Pattern #9)
+            const agentTools = [...getFilteredAgentTools(userMessage), ...composioTools];
             const request: Record<string, unknown> = {
                 type: "response.create",
                 model: MODEL,
@@ -486,7 +486,7 @@ async function runAgentLoop(
                             // Send follow-up with tool results
                             pendingFunctionCalls.clear();
 
-                            const agentTools = [...getAgentTools(), ...composioTools];
+                            const agentTools = [...getFilteredAgentTools(userMessage), ...composioTools];
                             const continuationRequest = {
                                 type: "response.create",
                                 model: MODEL,
@@ -560,7 +560,7 @@ async function runAgentLoop(
 
                                 // Use instructions (not a fake user message) for continuation nudge
                                 const continuationInstructions = `${systemInstructions}\n\n[FRAMEWORK CONTINUATION]: Continue working. Use your tools and keep making progress. If you're completely done, include [TASK_COMPLETE] at the end of your final response.`;
-                                const agentTools = [...getAgentTools(), ...composioTools];
+                                const agentTools = [...getFilteredAgentTools(userMessage), ...composioTools];
                                 const continuationRequest = {
                                     type: "response.create",
                                     model: MODEL,
