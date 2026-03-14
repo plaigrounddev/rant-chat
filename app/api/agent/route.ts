@@ -567,6 +567,9 @@ async function runAgentLoop(
                             code: event.error?.code,
                             message: event.error?.message,
                         });
+                        // Clean up per-session cloud resources
+                        await cleanupBrowserSession(taskRun.id).catch(() => { });
+                        await cleanupSandboxSession(taskRun.id).catch(() => { });
                         ws!.close();
                         close();
                         break;
@@ -581,6 +584,9 @@ async function runAgentLoop(
                             code: "rate_limit_exceeded",
                             message: "Rate limit exceeded. Please try again later.",
                         });
+                        // Clean up per-session cloud resources
+                        await cleanupBrowserSession(taskRun.id).catch(() => { });
+                        await cleanupSandboxSession(taskRun.id).catch(() => { });
                         ws!.close();
                         close();
                         break;
@@ -601,6 +607,9 @@ async function runAgentLoop(
                 code: "ws_error",
                 message: err.message || "WebSocket connection error",
             });
+            // Clean up per-session cloud resources
+            cleanupBrowserSession(taskRun.id).catch(() => { });
+            cleanupSandboxSession(taskRun.id).catch(() => { });
             close();
         });
 
@@ -614,6 +623,9 @@ async function runAgentLoop(
             code: "agent_error",
             message: "Failed to start agent",
         });
+        // Clean up per-session cloud resources
+        await cleanupBrowserSession(taskRun.id).catch(() => { });
+        await cleanupSandboxSession(taskRun.id).catch(() => { });
         close();
     }
 }

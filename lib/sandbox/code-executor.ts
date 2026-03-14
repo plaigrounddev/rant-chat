@@ -230,13 +230,12 @@ export class CodeExecutor {
                     assignments.push(`const ${key} = ${serialized};`);
                     break;
                 case "bash": {
-                    // For bash, export as environment variables
-                    // Use single quotes and escape embedded single quotes to prevent injection
-                    const escaped = typeof value === "string"
-                        ? value.replace(/'/g, "'\\''")
-                        : JSON.stringify(value).replace(/'/g, "'\\''");
+                    // For bash, encode values as base64 and decode at runtime
+                    // to completely prevent shell injection via metacharacters
+                    const raw = typeof value === "string" ? value : JSON.stringify(value);
+                    const b64 = Buffer.from(raw).toString("base64");
                     assignments.push(
-                        `export ${key}='${escaped}'`
+                        `export ${key}="$(echo '${b64}' | base64 -d)"`
                     );
                     break;
                 }

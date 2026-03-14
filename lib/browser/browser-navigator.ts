@@ -413,7 +413,19 @@ export class BrowserNavigator {
                     } else if (htmlEl.getAttribute("name")) {
                         selector = `${htmlEl.tagName.toLowerCase()}[name="${htmlEl.getAttribute("name")}"]`;
                     } else {
-                        selector = `${htmlEl.tagName.toLowerCase()}:nth-of-type(${index + 1})`;
+                        // Build a more reliable fallback selector
+                        const tag = htmlEl.tagName.toLowerCase();
+                        const text = (htmlEl.textContent ?? "").trim().slice(0, 30);
+                        const ariaLabel = htmlEl.getAttribute("aria-label");
+                        if (ariaLabel) {
+                            selector = `${tag}[aria-label="${ariaLabel}"]`;
+                        } else if (htmlEl.className && typeof htmlEl.className === 'string') {
+                            const cls = htmlEl.className.split(/\s+/).filter(c => c && !c.includes(':'))[0];
+                            if (cls) selector = `${tag}.${cls}`;
+                            else selector = `${tag}:nth-child(${Array.from(htmlEl.parentElement?.children ?? []).indexOf(htmlEl) + 1})`;
+                        } else {
+                            selector = `${tag}:nth-child(${Array.from(htmlEl.parentElement?.children ?? []).indexOf(htmlEl) + 1})`;
+                        }
                     }
 
                     return {
@@ -508,11 +520,13 @@ export class BrowserNavigator {
         const page = this.ensurePage();
 
         const result = await page.evaluate(expression);
-        return result === undefined
-            ? "undefined"
-            : typeof result === "string"
-                ? result
-                : JSON.stringify(result, null, 2);
+        if (result === undefined) return "undefined";
+        if (typeof result === "string") return result;
+        try {
+            return JSON.stringify(result, null, 2);
+        } catch {
+            return String(result);
+        }
     }
 
     // -------------------------------------------------------------------------

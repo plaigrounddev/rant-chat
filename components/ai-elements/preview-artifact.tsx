@@ -20,12 +20,19 @@ import {
     EyeIcon,
     CopyIcon,
     CheckIcon,
+    FileIcon,
 } from "lucide-react";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type PreviewType = "browser" | "code";
+
+export interface PreviewFile {
+    name: string;
+    code: string;
+    language: string;
+}
 
 export interface PreviewArtifactData {
     id: string;
@@ -37,6 +44,7 @@ export interface PreviewArtifactData {
     progress?: number; // 0-100
     code?: string;
     language?: string;
+    files?: PreviewFile[];
 }
 
 // ── Browser Preview Card (inline in chat) ──────────────────────────────────
@@ -189,17 +197,66 @@ export function CodePreviewPanel({
     onClose,
 }: CodePreviewPanelProps) {
     const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+    const [activeFileIdx, setActiveFileIdx] = useState(0);
     const [copied, setCopied] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    const files = preview.files || [];
+    const hasFiles = files.length > 0;
+
+    // Build self-contained HTML for preview by inlining CSS/JS files into the HTML
+    const htmlContent = useMemo(() => {
+        let html = "";
+
+        if (hasFiles) {
+            const htmlFiles = files.filter((f) => f.language === "html");
+            if (htmlFiles.length > 0) {
+                html = htmlFiles[htmlFiles.length - 1].code;
+            }
+        }
+
+        if (!html) html = preview.code || "";
+        if (!html) return "";
+
+        // Inline CSS files: replace <link href="filename.css"> with <style>content</style>
+        const cssFiles = files.filter((f) => f.language === "css");
+        for (const cssFile of cssFiles) {
+            const baseName = cssFile.name.split("/").pop() || cssFile.name;
+            // Match <link ... href="filename.css" ... /> patterns
+            const linkRegex = new RegExp(
+                `<link[^>]*href=["'](?:\\.?\\/)?${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*\\/?>`,
+                "gi"
+            );
+            html = html.replace(linkRegex, `<style>\n${cssFile.code}\n</style>`);
+        }
+
+        // Inline JS files: replace <script src="filename.js"></script> with <script>content</script>
+        const jsFiles = files.filter((f) => f.language === "javascript" || f.language === "js");
+        for (const jsFile of jsFiles) {
+            const baseName = jsFile.name.split("/").pop() || jsFile.name;
+            const scriptRegex = new RegExp(
+                `<script[^>]*src=["'](?:\\.?\\/)?${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>\\s*<\\/script>`,
+                "gi"
+            );
+            html = html.replace(scriptRegex, `<script>\n${jsFile.code}\n</script>`);
+        }
+
+        return html;
+    }, [files, hasFiles, preview.code]);
+
+    // Active file for code tab
+    const activeFile = hasFiles ? files[Math.min(activeFileIdx, files.length - 1)] : null;
+    const displayCode = activeFile?.code || preview.code || "";
+
     const handleCopy = useCallback(async () => {
-        if (preview.code) {
-            await navigator.clipboard.writeText(preview.code);
+        const codeToCopy = activeFile?.code || preview.code;
+        if (codeToCopy) {
+            await navigator.clipboard.writeText(codeToCopy);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         }
-    }, [preview.code]);
+    }, [activeFile, preview.code]);
 
     const handleOpenExternal = useCallback(() => {
         if (preview.url) {
@@ -207,18 +264,22 @@ export function CodePreviewPanel({
         }
     }, [preview.url]);
 
-    // Write code directly into iframe for sandbox-less preview
-    // Only use doc.write when there's no external URL to load
+    // Write HTML directly into iframe for live preview
     useEffect(() => {
-        if (activeTab === "preview" && preview.code && !preview.url && iframeRef.current) {
+        if (activeTab === "preview" && htmlContent && !preview.url && iframeRef.current) {
             const doc = iframeRef.current.contentDocument;
             if (doc) {
                 doc.open();
-                doc.write(preview.code);
+                doc.write(htmlContent);
                 doc.close();
             }
         }
-    }, [activeTab, preview.code, preview.url]);
+    }, [activeTab, htmlContent, preview.url]);
+
+    // Auto-select latest file when new files arrive
+    useEffect(() => {
+        if (hasFiles) setActiveFileIdx(files.length - 1);
+    }, [files.length, hasFiles]);
 
     return (
         <div
@@ -244,7 +305,7 @@ export function CodePreviewPanel({
                             <EyeIcon className="size-3.5" />
                             Preview
                         </button>
-                        {preview.code && (
+                        {(preview.code || hasFiles) && (
                             <button
                                 onClick={() => setActiveTab("code")}
                                 className={cn(
@@ -267,7 +328,7 @@ export function CodePreviewPanel({
 
                 {/* Actions */}
                 <div className="flex items-center gap-1">
-                    {preview.code && (
+                    {(displayCode || preview.code) && (
                         <button
                             onClick={handleCopy}
                             className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -324,7 +385,7 @@ export function CodePreviewPanel({
                                 title={preview.title || "Code Preview"}
                                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                             />
-                        ) : preview.code ? (
+                        ) : htmlContent ? (
                             <iframe
                                 ref={iframeRef}
                                 className="size-full border-0"
@@ -346,10 +407,40 @@ export function CodePreviewPanel({
                         )}
                     </div>
                 ) : (
-                    <div className="size-full overflow-auto bg-muted/20">
-                        <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                            <code>{preview.code || "No code available"}</code>
-                        </pre>
+                    <div className="flex size-full overflow-hidden">
+                        {/* File tabs sidebar (when multiple files) */}
+                        {hasFiles && files.length > 1 && (
+                            <div className="flex w-44 flex-col gap-0.5 overflow-y-auto border-r border-border bg-muted/20 p-2">
+                                {files.map((file, idx) => (
+                                    <button
+                                        key={`${file.name}-${idx}`}
+                                        onClick={() => setActiveFileIdx(idx)}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors text-left",
+                                            idx === activeFileIdx
+                                                ? "bg-background text-foreground shadow-sm"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                        )}
+                                    >
+                                        <FileIcon className="size-3.5 shrink-0" />
+                                        <span className="truncate">{file.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {/* Code viewer */}
+                        <div className="flex-1 overflow-auto bg-muted/20">
+                            {hasFiles && files.length > 1 && activeFile && (
+                                <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+                                    <FileIcon className="size-3.5 text-muted-foreground" />
+                                    <span className="text-xs font-medium text-foreground">{activeFile.name}</span>
+                                    <span className="text-xs text-muted-foreground">({activeFile.language})</span>
+                                </div>
+                            )}
+                            <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap">
+                                <code>{displayCode || "No code available"}</code>
+                            </pre>
+                        </div>
                     </div>
                 )}
             </div>

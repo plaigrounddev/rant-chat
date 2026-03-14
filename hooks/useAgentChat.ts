@@ -9,7 +9,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { PreviewArtifactData } from "@/components/ai-elements/preview-artifact";
+import type { PreviewArtifactData, PreviewFile } from "@/components/ai-elements/preview-artifact";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -402,14 +402,54 @@ export function useAgentChat() {
                 }
 
                 case "code_preview": {
-                    setActivePreview({
-                        id: (data.id as string) || `code-${Date.now()}`,
-                        type: "code",
-                        url: (data.url as string) || "",
-                        title: (data.title as string) || "Preview",
-                        status: "active",
-                        code: data.code as string | undefined,
-                        language: data.language as string | undefined,
+                    const newFile: PreviewFile | null = (data.code as string)
+                        ? {
+                            name: (data.title as string) || "file",
+                            code: data.code as string,
+                            language: (data.language as string) || "html",
+                        }
+                        : null;
+
+                    setActivePreview((prev) => {
+                        // If there's an existing code preview, accumulate files
+                        if (prev && prev.type === "code") {
+                            const existingFiles = prev.files || [];
+                            // Add single-code from prev if files were empty
+                            const files = existingFiles.length === 0 && prev.code
+                                ? [{ name: prev.title || "file", code: prev.code, language: prev.language || "html" }]
+                                : [...existingFiles];
+
+                            if (newFile) files.push(newFile);
+
+                            // Find the latest HTML code for preview rendering
+                            const htmlFiles = files.filter((f) => f.language === "html");
+                            const latestHtml = htmlFiles.length > 0
+                                ? htmlFiles[htmlFiles.length - 1].code
+                                : (data.code as string) || prev.code;
+
+                            return {
+                                ...prev,
+                                id: (data.id as string) || prev.id,
+                                title: (data.title as string) || prev.title || "Preview",
+                                url: (data.url as string) || prev.url || "",
+                                status: "active" as const,
+                                code: latestHtml || prev.code,
+                                language: (data.language as string) || prev.language,
+                                files,
+                            };
+                        }
+
+                        // Fresh preview
+                        return {
+                            id: (data.id as string) || `code-${Date.now()}`,
+                            type: "code" as const,
+                            url: (data.url as string) || "",
+                            title: (data.title as string) || "Preview",
+                            status: "active" as const,
+                            code: (data.code as string) || undefined,
+                            language: (data.language as string) || undefined,
+                            files: newFile ? [newFile] : [],
+                        };
                     });
                     break;
                 }

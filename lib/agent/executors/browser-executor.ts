@@ -116,9 +116,9 @@ export async function executeBrowserTool(
                 });
                 return JSON.stringify({
                     success: true,
-                    screenshot: screenshot.slice(0, 100) + "...", // Truncate for text response
-                    screenshotBase64: screenshot, // Full image data
+                    message: `Screenshot captured (${screenshot.length} bytes base64)`,
                     format: "png",
+                    length: screenshot.length,
                 });
             }
 
@@ -252,9 +252,20 @@ async function closeBrowserSession(sessionId: string): Promise<void> {
     const session = sessions.get(sessionId);
     if (!session) return;
 
-    await session.navigator.disconnect();
-    const manager = getKernelBrowserManager();
-    await manager.closeBrowser(session.browserId);
+    // Best-effort teardown: disconnect failure shouldn't prevent browser cleanup
+    try {
+        await session.navigator.disconnect();
+    } catch (error) {
+        console.warn(`[BrowserExecutor] Failed to disconnect navigator (session=${sessionId}):`, error);
+    }
+
+    try {
+        const manager = getKernelBrowserManager();
+        await manager.closeBrowser(session.browserId);
+    } catch (error) {
+        console.warn(`[BrowserExecutor] Failed to close browser (session=${sessionId}):`, error);
+    }
+
     sessions.delete(sessionId);
     console.log(`[BrowserExecutor] Closed browser session: ${sessionId}`);
 }

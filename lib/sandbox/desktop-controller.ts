@@ -85,11 +85,12 @@ export class DesktopController {
         if (this.sandbox) {
             try {
                 await this.sandbox.kill();
+                this.sandbox = null;
+                this.streamUrl = null;
             } catch (error: unknown) {
                 console.warn("[DesktopController] Failed to tear down previous sandbox:", error);
+                // Don't null out — the sandbox is still live on failure
             }
-            this.sandbox = null;
-            this.streamUrl = null;
         }
 
         this.ownerSessionId = sessionId ?? null;
