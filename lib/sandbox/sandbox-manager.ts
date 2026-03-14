@@ -128,6 +128,7 @@ export class SandboxManager {
                 id: sandboxId,
                 sandbox,
                 template: info.templateId ?? "base",
+                sessionId: (info.metadata as Record<string, string>)?._sessionId ?? undefined,
                 createdAt: new Date(info.startedAt),
                 status: "running",
                 metadata: (info.metadata as Record<string, string>) ?? {},
@@ -169,6 +170,9 @@ export class SandboxManager {
         } catch (error) {
             // Don't remove from tracking on failure so callers can retry
             console.error(`[SandboxManager] Failed to kill sandbox ${id}:`, error);
+            throw error instanceof Error
+                ? error
+                : new Error(`Failed to kill sandbox ${id}: ${String(error)}`);
         }
     }
 
@@ -231,9 +235,23 @@ export class SandboxManager {
      */
     async killAll(): Promise<void> {
         const ids = Array.from(this.activeSandboxes.keys());
-        await Promise.all(ids.map((id) => this.killSandbox(id)));
+        const results = await Promise.allSettled(
+            ids.map((id) => this.killSandbox(id))
+        );
+
+        const failures = results
+            .map((r, i) => (r.status === "rejected" ? { id: ids[i], reason: r.reason } : null))
+            .filter(Boolean);
+
+        if (failures.length > 0) {
+            console.error(
+                `[SandboxManager] ${failures.length}/${ids.length} sandboxes failed to terminate:`,
+                failures
+            );
+        }
+
         console.log(
-            `[SandboxManager] All ${ids.length} sandboxes terminated`
+            `[SandboxManager] Sandbox cleanup: ${ids.length - failures.length}/${ids.length} terminated`
         );
     }
 }

@@ -46,7 +46,7 @@ const customRehypePlugins = [
       allowedImagePrefixes: ["https://", "http://", "/"],
       // Allow standard link protocols
       allowedLinkPrefixes: ["https://", "http://", "/", "mailto:", "tel:"],
-      allowedProtocols: ["https", "http", "mailto", "tel"],
+      allowedProtocols: ["https:", "http:", "mailto:", "tel:"],
       defaultOrigin: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
       allowDataImages: true,
       imageBlockPolicy: "remove",
