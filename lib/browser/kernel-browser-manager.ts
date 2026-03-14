@@ -36,6 +36,7 @@ export interface BrowserInstance {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const MIN_TIMEOUT_MS = 5_000; // 5 seconds minimum
 const MAX_TIMEOUT_MS = 72 * 60 * 60 * 1000; // 72 hours
 
 // ---------------------------------------------------------------------------
@@ -52,9 +53,9 @@ export class KernelBrowserManager {
 
     async createBrowser(options: BrowserCreateOptions = {}): Promise<BrowserInstance> {
         const requestedTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-        const timeoutMs = Math.min(
-            Math.max(requestedTimeout, 1000),
-            MAX_TIMEOUT_MS
+        const timeoutMs = Math.max(
+            MIN_TIMEOUT_MS,
+            Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
         );
 
         try {
@@ -96,7 +97,7 @@ export class KernelBrowserManager {
             this.activeBrowsers.set(instance.id, instance);
 
             console.log(
-                `[KernelBrowserManager] Browser created: ${instance.id}`
+                `[KernelBrowserManager] Browser created: ${instance.id} (CDP: ***masked***)`
             );
 
             return instance;
@@ -127,7 +128,7 @@ export class KernelBrowserManager {
             console.log(`[KernelBrowserManager] Browser ${id} terminated (remote + local)`);
         } catch (error: unknown) {
             console.error(`[KernelBrowserManager] Failed to close browser ${id}:`, error);
-            // Keep tracked for retry; remote browser may still be running.
+            // Keep local entry so caller can retry; mark as paused, not terminated
             instance.status = "paused";
         }
     }
@@ -144,14 +145,14 @@ export class KernelBrowserManager {
     }
 
     async getOrCreateBrowser(options: BrowserCreateOptions = {}): Promise<BrowserInstance> {
-        // Match by profileId to prevent session leakage across profiles
+        // Match by profileId AND creation options to prevent mismatched reuse
         const existing = Array.from(this.activeBrowsers.values()).find(
             (b) =>
                 b.status === "running" &&
                 b.expiresAt > new Date() &&
                 (b.creationOptions.profileId ?? "") === (options.profileId ?? "") &&
-                (b.creationOptions.enableLiveView ?? false) === (options.enableLiveView ?? false) &&
-                (b.creationOptions.enableRecording ?? false) === (options.enableRecording ?? false) &&
+                !!b.creationOptions.enableLiveView === !!options.enableLiveView &&
+                !!b.creationOptions.enableRecording === !!options.enableRecording &&
                 (b.creationOptions.viewportWidth ?? 1280) === (options.viewportWidth ?? 1280) &&
                 (b.creationOptions.viewportHeight ?? 720) === (options.viewportHeight ?? 720)
         );
