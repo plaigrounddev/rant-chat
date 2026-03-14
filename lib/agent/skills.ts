@@ -23,6 +23,7 @@ import { runCode } from "./executors/code-runner";
 import { perplexitySearch } from "./executors/perplexity-search";
 import { parallelWebSearch, parallelExtract } from "./executors/parallel-search";
 import { searchKnowledge } from "./executors/embedding-search";
+import "./executors/pull-image";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

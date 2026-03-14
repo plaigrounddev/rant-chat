@@ -41,7 +41,9 @@ import {
     BoxIcon,
     TerminalIcon,
     ExternalLinkIcon,
+    ImageIcon,
 } from "lucide-react";
+import { Image } from "@/components/ai-elements/image";
 import { useCallback, useState } from "react";
 
 // ── Suggestions ────────────────────────────────────────────────────────────
@@ -239,6 +241,7 @@ function ToolCallCard({
         update_memory: <BrainIcon className="size-4" />,
         delete_memory: <BrainIcon className="size-4" />,
         discover_integration: <SearchIcon className="size-4" />,
+        pull_image: <ImageIcon className="size-4" />,
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: <SearchIcon className="size-4" />,
         COMPOSIO_MANAGE_CONNECTIONS: <PlugIcon className="size-4" />,
@@ -263,6 +266,7 @@ function ToolCallCard({
         update_memory: "Updating Memory",
         delete_memory: "Deleting Memory",
         discover_integration: "Discovering Integration",
+        pull_image: "Pulling Image",
         // Composio meta tools
         COMPOSIO_SEARCH_TOOLS: "Searching Tools",
         COMPOSIO_MANAGE_CONNECTIONS: "Managing Connection",
@@ -489,9 +493,23 @@ function ToolCallCard({
                         <span className="font-medium text-muted-foreground uppercase tracking-wide mb-1 block">
                             Result
                         </span>
-                        <pre className="rounded-md bg-muted/50 p-2 overflow-x-auto whitespace-pre-wrap text-foreground max-h-48 overflow-y-auto">
-                            {result}
-                        </pre>
+                        {name === "pull_image" ? (
+                            <div className="mt-2 flex justify-center bg-muted/30 p-2 rounded-md border border-border/40">
+                                {(() => {
+                                    try {
+                                        const parsed = JSON.parse(result);
+                                        if (parsed.error) return <span className="text-destructive text-sm">{parsed.error}</span>;
+                                        return <Image base64={parsed.base64} uint8Array={new Uint8Array()} mediaType={parsed.mediaType} alt={parsed.alt || "Pulled image"} className="max-h-[300px] object-contain" />;
+                                    } catch (e) {
+                                        return <span className="text-muted-foreground">Invalid image data</span>;
+                                    }
+                                })()}
+                            </div>
+                        ) : (
+                            <pre className="rounded-md bg-muted/50 p-2 overflow-x-auto whitespace-pre-wrap text-foreground max-h-48 overflow-y-auto">
+                                {result}
+                            </pre>
+                        )}
                     </div>
                 )}
             </div>
