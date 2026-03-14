@@ -161,7 +161,11 @@ registerSkill({
     executor: async (args) => {
         const query = asNonEmptyString(args.query);
         if (!query) return JSON.stringify({ error: "query must be a non-empty string" });
-        const mode = (args.mode as "fast" | "one-shot" | "agentic") || "fast";
+        const validModes = ["fast", "one-shot", "agentic"] as const;
+        const rawMode = args.mode as string;
+        const mode = validModes.includes(rawMode as typeof validModes[number])
+            ? (rawMode as typeof validModes[number])
+            : "fast";
         return parallelWebSearch(query, mode);
     },
 });

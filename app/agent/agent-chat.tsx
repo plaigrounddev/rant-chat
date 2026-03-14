@@ -598,15 +598,21 @@ export default function AgentChat() {
                                                     </div>
                                                 )}
 
-                                                {/* Browser preview card (inline) */}
-                                                {activePreview?.type === "browser" && message.from === "assistant" && message.tools?.some(t => t.name.startsWith("browser_")) && (
-                                                    <div className="mb-4">
-                                                        <BrowserPreviewCard
-                                                            preview={activePreview}
-                                                            onDismiss={dismissPreview}
-                                                        />
-                                                    </div>
-                                                )}
+                                                {/* Browser preview card — only on the LAST assistant message with browser tools */}
+                                                {activePreview?.type === "browser" && message.from === "assistant" && message.tools?.some(t => t.name.startsWith("browser_")) && (() => {
+                                                    // Find the index of the last assistant message with browser tools
+                                                    const lastBrowserIdx = messages.reduce((acc, m, i) =>
+                                                        m.from === "assistant" && m.tools?.some(t => t.name.startsWith("browser_")) ? i : acc, -1);
+                                                    const currentIdx = messages.indexOf(message);
+                                                    return currentIdx === lastBrowserIdx;
+                                                })() && (
+                                                        <div className="mb-4">
+                                                            <BrowserPreviewCard
+                                                                preview={activePreview}
+                                                                onDismiss={dismissPreview}
+                                                            />
+                                                        </div>
+                                                    )}
 
                                                 {/* Connect button — rendered at message level, NOT inside tool card */}
                                                 {(() => {
