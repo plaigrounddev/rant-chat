@@ -421,22 +421,25 @@ async function runAgentLoop(
                                             }
                                         }
 
-                                        // Detect generate_app results with live demo URL
-                                        if (fc.name === "generate_app") {
-                                            try {
-                                                const parsed = JSON.parse(result);
-                                                if (parsed.success && (parsed.demoUrl || parsed.code)) {
-                                                    sendSSE("code_preview", {
-                                                        id: `app-${fc.call_id}`,
-                                                        title: (args.prompt as string)?.slice(0, 60) || "Generated App",
-                                                        url: parsed.demoUrl || "",
-                                                        code: parsed.code || "",
-                                                        language: "tsx",
-                                                        chatId: parsed.chatId,
-                                                    });
-                                                }
-                                            } catch {
-                                                // Ignore parse errors for preview detection
+                                        // Detect sandbox file writes with web content (HTML/CSS/JS/TSX)
+                                        if (fc.name === "sandbox_write_file") {
+                                            const filePath = (args.path as string) || "";
+                                            const content = (args.content as string) || "";
+                                            const ext = filePath.split(".").pop()?.toLowerCase();
+                                            const webExts = ["html", "htm", "css", "js", "jsx", "ts", "tsx", "vue", "svelte"];
+
+                                            if (ext && webExts.includes(ext) && content.length > 0) {
+                                                const langMap: Record<string, string> = {
+                                                    html: "html", htm: "html", css: "css",
+                                                    js: "javascript", jsx: "jsx", ts: "typescript",
+                                                    tsx: "tsx", vue: "vue", svelte: "svelte",
+                                                };
+                                                sendSSE("code_preview", {
+                                                    id: `file-${fc.call_id}`,
+                                                    title: filePath.split("/").pop() || "File",
+                                                    code: content,
+                                                    language: langMap[ext] || ext,
+                                                });
                                             }
                                         }
 

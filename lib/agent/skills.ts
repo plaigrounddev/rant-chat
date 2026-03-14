@@ -20,7 +20,6 @@ import { memoryStore } from "./memory";
 import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
-import { generateApp } from "./executors/generate-app";
 import { perplexitySearch } from "./executors/perplexity-search";
 import { parallelWebSearch, parallelExtract } from "./executors/parallel-search";
 import { searchKnowledge } from "./executors/embedding-search";
@@ -310,42 +309,6 @@ registerSkill({
         const code = asNonEmptyString(args.code);
         if (!code) return JSON.stringify({ error: "code must be a non-empty string" });
         return runCode(code);
-    },
-});
-
-// Generate App — v0-style app builder
-registerSkill({
-    name: "generate_app",
-    description:
-        "Generate a web application from a text description using AI. Creates a live, working preview hosted on the web. Use this when the user asks you to build, create, or code a web page, component, app, or UI. Returns a live demo URL and code. You can iterate on existing apps by passing the chatId from a previous generation.",
-    category: "code",
-    toolDefinition: {
-        type: "function",
-        name: "generate_app",
-        description:
-            "Generate a web application from a text description. Creates a live preview. Use when the user wants you to build a web page, component, or app.",
-        parameters: {
-            type: "object",
-            properties: {
-                prompt: {
-                    type: "string",
-                    description:
-                        "Detailed description of what to build. Be specific about design, features, and behavior. Include styling preferences (e.g. 'dark mode', 'minimalist', 'glassmorphism').",
-                },
-                chatId: {
-                    type: "string",
-                    description:
-                        "Optional. Pass the chatId from a previous generate_app result to iterate on the same app (e.g. 'add a dark mode toggle').",
-                },
-            },
-            required: ["prompt"],
-        },
-    },
-    executor: async (args) => {
-        const prompt = asNonEmptyString(args.prompt);
-        if (!prompt) return JSON.stringify({ error: "prompt must be a non-empty string" });
-        const chatId = asNonEmptyString(args.chatId);
-        return generateApp(prompt, chatId);
     },
 });
 
