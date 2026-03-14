@@ -390,7 +390,7 @@ export function CodePreviewPanel({
                                 ref={iframeRef}
                                 className="size-full border-0"
                                 title={preview.title || "Code Preview"}
-                                sandbox="allow-scripts"
+                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                             />
                         ) : (
                             <div className="flex size-full items-center justify-center bg-background">

@@ -28,12 +28,20 @@ import { harden } from "rehype-harden";
 // ── Custom rehype pipeline (fix [Image blocked] from rehype-harden) ────────
 // Streamdown's built-in harden uses imageBlockPolicy "indicator" which shows
 // ugly "[Image blocked: ...]" text for any image src it can't validate.
-// We override with "remove" so blocked images are silently dropped.
+// We override with "remove" so blocked images are silently dropped,
+// and expand the sanitize schema to let links and images through.
 const sanitizeSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "img"],
+  attributes: {
+    ...defaultSchema.attributes,
+    img: ["src", "alt", "title", "width", "height", "loading"],
+    a: [...(defaultSchema.attributes?.a ?? []), "href", "target", "rel"],
+  },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "tel"],
+    href: [...(defaultSchema.protocols?.href ?? []), "https", "http", "mailto", "tel"],
+    src: ["https", "http", "data"],
   },
 };
 const customRehypePlugins = [
@@ -42,12 +50,11 @@ const customRehypePlugins = [
   [
     harden,
     {
-      // Allow common image sources (agent generates these)
-      allowedImagePrefixes: ["https://", "http://", "/"],
-      // Allow standard link protocols
-      allowedLinkPrefixes: ["https://", "http://", "/", "mailto:", "tel:"],
-      allowedProtocols: ["https:", "http:", "mailto:", "tel:"],
-      defaultOrigin: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
+      // Use wildcard — rehype-sanitize above handles XSS protection.
+      // rehype-harden with ["*"] still blocks javascript:, vbscript:, file: protocols.
+      allowedImagePrefixes: ["*"],
+      allowedLinkPrefixes: ["*"],
+      allowedProtocols: ["*"],
       allowDataImages: true,
       imageBlockPolicy: "remove",
     },
