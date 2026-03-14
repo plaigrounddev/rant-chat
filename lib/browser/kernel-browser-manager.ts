@@ -51,8 +51,9 @@ export class KernelBrowserManager {
     }
 
     async createBrowser(options: BrowserCreateOptions = {}): Promise<BrowserInstance> {
+        const requestedTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
         const timeoutMs = Math.min(
-            options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            Math.max(requestedTimeout, 1000),
             MAX_TIMEOUT_MS
         );
 
@@ -95,7 +96,7 @@ export class KernelBrowserManager {
             this.activeBrowsers.set(instance.id, instance);
 
             console.log(
-                `[KernelBrowserManager] Browser created: ${instance.id} (CDP: ${instance.cdpWsUrl})`
+                `[KernelBrowserManager] Browser created: ${instance.id}`
             );
 
             return instance;
@@ -126,9 +127,8 @@ export class KernelBrowserManager {
             console.log(`[KernelBrowserManager] Browser ${id} terminated (remote + local)`);
         } catch (error: unknown) {
             console.error(`[KernelBrowserManager] Failed to close browser ${id}:`, error);
-            // Still clean up local state even if remote call fails
-            instance.status = "terminated";
-            this.activeBrowsers.delete(id);
+            // Keep tracked for retry; remote browser may still be running.
+            instance.status = "paused";
         }
     }
 
@@ -149,7 +149,11 @@ export class KernelBrowserManager {
             (b) =>
                 b.status === "running" &&
                 b.expiresAt > new Date() &&
-                (b.creationOptions.profileId ?? "") === (options.profileId ?? "")
+                (b.creationOptions.profileId ?? "") === (options.profileId ?? "") &&
+                (b.creationOptions.enableLiveView ?? false) === (options.enableLiveView ?? false) &&
+                (b.creationOptions.enableRecording ?? false) === (options.enableRecording ?? false) &&
+                (b.creationOptions.viewportWidth ?? 1280) === (options.viewportWidth ?? 1280) &&
+                (b.creationOptions.viewportHeight ?? 720) === (options.viewportHeight ?? 720)
         );
 
         if (existing) {
