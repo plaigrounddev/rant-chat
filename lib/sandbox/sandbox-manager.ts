@@ -22,6 +22,8 @@ import { Sandbox } from "@e2b/code-interpreter";
 export interface SandboxCreateOptions {
     /** Custom template ID (default: base template) */
     template?: string;
+    /** Session/run ID for isolation (sandboxes are reused within the same session only) */
+    sessionId?: string;
     /** Sandbox timeout in milliseconds (default: 5 minutes) */
     timeoutMs?: number;
     /** User-defined metadata for tracking */
@@ -35,6 +37,8 @@ export interface SandboxInstance {
     sandbox: Sandbox;
     /** Template used */
     template: string;
+    /** Session/run ID this sandbox belongs to */
+    sessionId?: string;
     /** When this sandbox was created */
     createdAt: Date;
     /** Current status */
@@ -90,6 +94,7 @@ export class SandboxManager {
                 id: info.sandboxId,
                 sandbox,
                 template: info.templateId ?? options.template ?? "base",
+                sessionId: options.sessionId,
                 createdAt: new Date(),
                 status: "running",
                 metadata: options.metadata ?? {},
@@ -200,20 +205,32 @@ export class SandboxManager {
      * This is the primary method the agent executor should use.
      */
     async getOrCreateSandbox(
-        options: SandboxCreateOptions = {}
+        options: SandboxCreateOptions = {},
+        sessionId?: string
     ): Promise<SandboxInstance> {
-        // Look for an existing running sandbox that matches the requested template
         const requestedTemplate = options.template ?? "base";
+
+        // If a sessionId is provided, only reuse sandboxes from the same session
+        // to prevent cross-run pollution (files, packages, env, processes)
         const existing = Array.from(this.activeSandboxes.values()).find(
-            (s) => s.status === "running" && s.template === requestedTemplate
+            (s) =>
+                s.status === "running" &&
+                s.template === requestedTemplate &&
+                (!sessionId || s.metadata._sessionId === sessionId)
         );
 
         if (existing) {
-            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id} (template: ${existing.template})`);
+            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id} (template: ${existing.template}, session: ${sessionId ?? "any"})`);
             return existing;
         }
 
-        return this.createSandbox(options);
+        // Tag new sandbox with sessionId for future reuse matching
+        const metadata = {
+            ...options.metadata,
+            ...(sessionId && { _sessionId: sessionId }),
+        };
+
+        return this.createSandbox({ ...options, metadata });
     }
 
     /**

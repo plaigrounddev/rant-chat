@@ -96,6 +96,16 @@ export class CodeExecutor {
                 });
                 stdout = result.stdout;
                 stderr = result.stderr;
+                if (result.exitCode !== 0) {
+                    return {
+                        success: false,
+                        stdout: stdout.trim(),
+                        stderr: stderr.trim(),
+                        error: `Command failed (exit ${result.exitCode})`,
+                        artifacts: [],
+                        durationMs: Date.now() - startTime,
+                    };
+                }
             } else {
                 // Use code interpreter for Python/JavaScript
                 const result = await this.sandbox.runCode(wrappedCode, {

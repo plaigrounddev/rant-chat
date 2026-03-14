@@ -53,8 +53,15 @@ export async function executeBrowserTool(
         return JSON.stringify({ error: `Unknown browser tool: ${toolName}` });
     }
 
-    // Use a default session if none provided (single-user fallback)
-    const sid = sessionId || "__default__";
+    // Require a real sessionId for isolation — no fallback
+    if (!sessionId) {
+        return JSON.stringify({
+            success: false,
+            error: "sessionId is required for browser tools",
+            tool: toolName,
+        });
+    }
+    const sid = sessionId;
 
     try {
         // Ensure we have an active browser for this session
@@ -225,7 +232,7 @@ async function ensureBrowserConnection(sessionId: string): Promise<BrowserSessio
     if (existing) return existing;
 
     const manager = getKernelBrowserManager();
-    const instance = await manager.getOrCreateBrowser({ enableLiveView: true });
+    const instance = await manager.createBrowser({ enableLiveView: true });
 
     const nav = new BrowserNavigator();
     await nav.connect(instance.cdpWsUrl);

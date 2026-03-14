@@ -104,7 +104,7 @@ class TaskStore {
 
     completeRun(runId: string, status: TaskRunStatus = "completed", error?: string) {
         const run = taskHistory.find((r) => r.id === runId);
-        if (!run || run.status === "completed" || run.status === "error") return;
+        if (!run || run.status === "completed" || run.status === "error" || run.status === "exhausted") return;
 
         run.status = status;
         run.completedAt = new Date().toISOString();
@@ -122,6 +122,7 @@ class TaskStore {
     getStats() {
         const total = taskHistory.length;
         const completed = taskHistory.filter((r) => r.status === "completed").length;
+        const exhausted = taskHistory.filter((r) => r.status === "exhausted").length;
         const errors = taskHistory.filter((r) => r.status === "error").length;
         const avgSteps =
             total > 0
@@ -130,7 +131,7 @@ class TaskStore {
                 )
                 : 0;
 
-        return { total, completed, errors, avgSteps };
+        return { total, completed, exhausted, errors, avgSteps };
     }
 }
 

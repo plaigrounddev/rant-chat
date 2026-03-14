@@ -350,13 +350,20 @@ async function runAgentLoop(
                                         }
 
                                         // Stream special SSE events for reasoning tools
-                                        // Note: think tool content is NOT sent to the client
-                                        // to avoid leaking internal reasoning
                                         if (fc.name === "think") {
-                                            console.log(`[AGENT] 🤔 Think: ${(args.thought as string || '').slice(0, 150)}...`);
+                                            // Don't log or send think content to avoid leaking
+                                            // internal reasoning to client or logs
+                                            console.log(`[AGENT] 🤔 Think tool invoked`);
                                             sendSSE("agent_thinking", {
                                                 call_id: fc.call_id,
                                                 status: "thinking",
+                                            });
+                                            // Emit redacted tool_result for think (no args/result)
+                                            sendSSE("tool_result", {
+                                                call_id: fc.call_id,
+                                                name: fc.name,
+                                                arguments: {},
+                                                result: "[internal reasoning]",
                                             });
                                         } else if (fc.name === "task_plan") {
                                             sendSSE("agent_plan", {
@@ -365,14 +372,20 @@ async function runAgentLoop(
                                                 steps: args.steps as string || "",
                                                 estimated_rounds: args.estimated_rounds as number || 0,
                                             });
+                                            sendSSE("tool_result", {
+                                                call_id: fc.call_id,
+                                                name: fc.name,
+                                                arguments: args,
+                                                result,
+                                            });
+                                        } else {
+                                            sendSSE("tool_result", {
+                                                call_id: fc.call_id,
+                                                name: fc.name,
+                                                arguments: args,
+                                                result,
+                                            });
                                         }
-
-                                        sendSSE("tool_result", {
-                                            call_id: fc.call_id,
-                                            name: fc.name,
-                                            arguments: args,
-                                            result,
-                                        });
 
                                         // Emit preview artifacts for browser & sandbox
                                         if (isBrowserTool(fc.name)) {

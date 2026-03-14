@@ -2,8 +2,19 @@
 // Queries and mutations for the embeddedFiles table
 // (Cannot be in "use node" file — only actions can use Node.js runtime)
 
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
+
+// ── Internal: Look up user by Clerk ID ──────────────────────────────────
+export const getUserByClerkId = internalQuery({
+    args: { clerkId: v.string() },
+    handler: async (ctx, args) => {
+        return await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+            .unique();
+    },
+});
 
 // ── Internal: Update embedded file status ───────────────────────────────
 export const updateFileStatus = internalMutation({

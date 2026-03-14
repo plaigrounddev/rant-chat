@@ -55,18 +55,31 @@ export interface DesktopState {
 export class DesktopController {
     private sandbox: DesktopSandbox | null = null;
     private streamUrl: string | null = null;
+    /** The session/run ID currently owning this controller (for isolation checks) */
+    private ownerSessionId: string | null = null;
 
     /**
      * Create a new desktop sandbox.
+     * @param options - Desktop creation options
+     * @param sessionId - Optional session/run ID for ownership tracking
      */
     async createDesktop(
-        options: DesktopCreateOptions = {}
+        options: DesktopCreateOptions = {},
+        sessionId?: string
     ): Promise<void> {
         const {
             resolution = [1024, 768],
             dpi = 96,
             timeoutMs = 10 * 60 * 1000,
         } = options;
+
+        // Warn if another session owns this controller (single-tenant only)
+        if (this.sandbox && this.ownerSessionId && sessionId && this.ownerSessionId !== sessionId) {
+            console.warn(
+                `[DesktopController] Session ${sessionId} is replacing desktop owned by ${this.ownerSessionId}. ` +
+                `This singleton is designed for single-tenant use only.`
+            );
+        }
 
         // Tear down existing sandbox to prevent orphaned VMs
         if (this.sandbox) {
@@ -79,13 +92,15 @@ export class DesktopController {
             this.streamUrl = null;
         }
 
+        this.ownerSessionId = sessionId ?? null;
+
         this.sandbox = await DesktopSandbox.create({
             resolution,
             dpi,
             timeoutMs,
         });
 
-        console.log("[DesktopController] Desktop sandbox created");
+        console.log(`[DesktopController] Desktop sandbox created (session=${sessionId ?? "unscoped"})`);
     }
 
     /**
@@ -277,14 +292,42 @@ export class DesktopController {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton
+// Session-keyed registry (prevents cross-session collisions)
 // ---------------------------------------------------------------------------
 
-let _instance: DesktopController | null = null;
+const _controllers: Map<string, DesktopController> = new Map();
 
-export function getDesktopController(): DesktopController {
-    if (!_instance) {
-        _instance = new DesktopController();
+/**
+ * Get (or create) a DesktopController scoped to a session/run ID.
+ * Each session gets its own isolated desktop sandbox.
+ */
+export function getDesktopController(sessionId: string): DesktopController {
+    let controller = _controllers.get(sessionId);
+    if (!controller) {
+        controller = new DesktopController();
+        _controllers.set(sessionId, controller);
     }
-    return _instance;
+    return controller;
+}
+
+/**
+ * Dispose a session's desktop controller and remove it from the registry.
+ */
+export async function disposeDesktopController(sessionId: string): Promise<void> {
+    const controller = _controllers.get(sessionId);
+    if (controller) {
+        await controller.kill();
+        _controllers.delete(sessionId);
+    }
+}
+
+/**
+ * Dispose ALL desktop controllers (shutdown cleanup).
+ */
+export async function disposeAllDesktopControllers(): Promise<void> {
+    const entries = Array.from(_controllers.entries());
+    for (const [sessionId, controller] of entries) {
+        await controller.kill();
+        _controllers.delete(sessionId);
+    }
 }

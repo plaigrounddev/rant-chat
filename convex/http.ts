@@ -59,9 +59,20 @@ http.route({
             const blob = await request.blob();
             const storageId = await ctx.storage.store(blob);
 
+            // Look up the Convex user document by Clerk ID
+            const user = await ctx.runQuery(internal.embeddedFiles.getUserByClerkId, {
+                clerkId: userId,
+            });
+            if (!user) {
+                return new Response(
+                    JSON.stringify({ error: "User not found" }),
+                    { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+                );
+            }
+
             // Register the file upload record
             const fileId = await ctx.runMutation(internal.embeddedFiles.registerFileUpload, {
-                userId: userId as any,
+                userId: user._id,
                 fileName,
                 mimeType,
                 storageId,

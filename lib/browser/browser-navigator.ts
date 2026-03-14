@@ -241,8 +241,11 @@ export class BrowserNavigator {
                 case "select":
                     await page.selectOption(field.selector, field.value, { timeout });
                     break;
-                case "checkbox":
                 case "radio":
+                    // Radios are always checked (select the intended option)
+                    await page.check(field.selector, { timeout });
+                    break;
+                case "checkbox":
                     if (field.value === "true" || field.value === "checked") {
                         await page.check(field.selector, { timeout });
                     } else {
@@ -504,12 +507,12 @@ export class BrowserNavigator {
     async evaluateJS(expression: string): Promise<string> {
         const page = this.ensurePage();
 
-        try {
-            const result = await page.evaluate(expression);
-            return typeof result === "string" ? result : JSON.stringify(result, null, 2);
-        } catch (error) {
-            return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
+        const result = await page.evaluate(expression);
+        return result === undefined
+            ? "undefined"
+            : typeof result === "string"
+                ? result
+                : JSON.stringify(result, null, 2);
     }
 
     // -------------------------------------------------------------------------
