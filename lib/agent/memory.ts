@@ -12,9 +12,12 @@ import { join } from "path";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+export type MemoryCategory = "preference" | "fact" | "instruction" | "correction";
+
 export interface Memory {
     id: string;
     content: string;
+    category: MemoryCategory;
     createdAt: string;
     updatedAt: string;
 }
@@ -86,13 +89,14 @@ class MemoryStore {
         return memories.filter((m) => m.content.toLowerCase().includes(q));
     }
 
-    async create(content: string): Promise<Memory> {
+    async create(content: string, category: MemoryCategory = "fact"): Promise<Memory> {
         return serialisedWrite(async () => {
             const memories = await loadMemories();
             const now = new Date().toISOString();
             const memory: Memory = {
                 id: generateId(),
                 content,
+                category,
                 createdAt: now,
                 updatedAt: now,
             };
@@ -127,14 +131,31 @@ class MemoryStore {
         });
     }
 
-    /** Format all memories for injection into the system prompt */
+    /** Format all memories for injection into the system prompt, grouped by category */
     async formatForContext(): Promise<string> {
         const memories = await loadMemories();
         if (memories.length === 0) return "";
-        const items = memories
-            .map((m, i) => `${i + 1}. [${m.id}] ${m.content}`)
-            .join("\n");
-        return `\n\nMEMORIES (persistent knowledge from past interactions):\n${items}\n`;
+
+        // Group by category — preferences and instructions first (always relevant)
+        const grouped: Record<string, Memory[]> = {};
+        const order: MemoryCategory[] = ["preference", "instruction", "correction", "fact"];
+        for (const cat of order) grouped[cat] = [];
+        for (const m of memories) {
+            const cat = m.category || "fact"; // backwards compat for old memories
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(m);
+        }
+
+        const sections: string[] = [];
+        for (const cat of order) {
+            const items = grouped[cat];
+            if (items.length === 0) continue;
+            const label = cat.charAt(0).toUpperCase() + cat.slice(1) + "s";
+            const lines = items.map((m, i) => `  ${i + 1}. [${m.id}] ${m.content}`).join("\n");
+            sections.push(`${label}:\n${lines}`);
+        }
+
+        return `\n\nMEMORIES (persistent knowledge from past interactions):\n${sections.join("\n\n")}\n`;
     }
 }
 

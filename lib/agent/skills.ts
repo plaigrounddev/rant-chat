@@ -16,7 +16,7 @@
  */
 
 import type { FunctionToolDefinition } from "./tools";
-import { memoryStore } from "./memory";
+import { memoryStore, type MemoryCategory } from "./memory";
 import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
@@ -110,7 +110,7 @@ registerSkill({
         type: "function",
         name: "scrape_website",
         description:
-            "Fetch and extract text content from a web page URL. Use this to read articles, documentation, or any web page content.",
+            "Fetch and extract text content from a web page URL. Best for static pages like articles, docs, blog posts. Examples: scrape_website('https://docs.python.org/3/tutorial/') to read Python docs, scrape_website('https://en.wikipedia.org/wiki/Anthropic') for a Wikipedia article.",
         parameters: {
             type: "object",
             properties: {
@@ -139,7 +139,7 @@ registerSkill({
         type: "function",
         name: "web_search",
         description:
-            "Search the web and get ranked results with URLs, titles, and excerpts. Use for finding web pages, articles, news, and sources on any topic.",
+            "Search the web and get ranked results with URLs, titles, and excerpts. Examples of effective queries: 'Anthropic Series C funding amount 2024', 'best React state management library comparison', 'site:github.com openai function calling'. Use specific keywords, include dates for recent info, use site: for domain-scoped searches.",
         parameters: {
             type: "object",
             properties: {
@@ -219,7 +219,7 @@ registerSkill({
         type: "function",
         name: "ask_perplexity",
         description:
-            "Ask Perplexity AI a question and get a comprehensive answer with citations. Use when you need a synthesized answer rather than raw web results.",
+            "Ask Perplexity AI a question and get a comprehensive answer with citations. Best for complex questions needing synthesis, e.g.: 'Compare the pros and cons of PostgreSQL vs MongoDB for a SaaS app', 'What are the latest FDA regulations on AI in healthcare?', 'Explain how transformer attention mechanisms work'.",
         parameters: {
             type: "object",
             properties: {
@@ -376,6 +376,12 @@ registerSkill({
                     description:
                         "The information to remember (be concise but specific)",
                 },
+                category: {
+                    type: "string",
+                    enum: ["preference", "fact", "instruction", "correction"],
+                    description:
+                        "Memory category: 'preference' (user style/prefs), 'fact' (learned info), 'instruction' (operational rules), 'correction' (lessons from mistakes). Default: fact",
+                },
             },
             required: ["content"],
         },
@@ -384,11 +390,62 @@ registerSkill({
         if (typeof args.content !== "string" || !args.content.trim()) {
             return JSON.stringify({ error: "content must be a non-empty string" });
         }
-        const memory = await memoryStore.create(args.content);
+        const validCategories: MemoryCategory[] = ["preference", "fact", "instruction", "correction"];
+        const category: MemoryCategory = validCategories.includes(args.category as MemoryCategory)
+            ? (args.category as MemoryCategory)
+            : "fact";
+        const memory = await memoryStore.create(args.content, category);
         return JSON.stringify({
             success: true,
-            memory: { id: memory.id, content: memory.content },
+            memory: { id: memory.id, content: memory.content, category: memory.category },
             message: "Memory stored successfully",
+        });
+    },
+});
+
+// Save Learning — self-improving agent memory (inspired by Lindy's auto-learning)
+registerSkill({
+    name: "save_learning",
+    description:
+        "PROACTIVELY save a lesson learned during this conversation. Call this when: (1) a user corrects your output, (2) you discover a working API configuration, (3) a tool fails and you figure out why, (4) the user states a preference. This is how you SELF-IMPROVE across conversations.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "save_learning",
+        description:
+            "Save a lesson learned for future reference. Use proactively when you discover something useful.",
+        parameters: {
+            type: "object",
+            properties: {
+                learning: {
+                    type: "string",
+                    description:
+                        "What you learned — be specific and actionable (e.g., 'User prefers tables over bullet lists' or 'GitHub API needs Accept header')",
+                },
+                category: {
+                    type: "string",
+                    enum: ["preference", "fact", "instruction", "correction"],
+                    description:
+                        "Category: 'preference' (user style), 'fact' (discovered info), 'instruction' (operational rule), 'correction' (mistake lesson)",
+                },
+            },
+            required: ["learning", "category"],
+        },
+    },
+    executor: async (args) => {
+        const learning = asNonEmptyString(args.learning);
+        if (!learning) return JSON.stringify({ error: "learning must be a non-empty string" });
+
+        const validCategories: MemoryCategory[] = ["preference", "fact", "instruction", "correction"];
+        const category: MemoryCategory = validCategories.includes(args.category as MemoryCategory)
+            ? (args.category as MemoryCategory)
+            : "correction";
+
+        const memory = await memoryStore.create(learning, category);
+        return JSON.stringify({
+            success: true,
+            memory: { id: memory.id, content: memory.content, category: memory.category },
+            message: `Learning saved as ${category} — will be applied in future conversations`,
         });
     },
 });
