@@ -205,32 +205,25 @@ export class SandboxManager {
      * This is the primary method the agent executor should use.
      */
     async getOrCreateSandbox(
-        options: SandboxCreateOptions = {},
-        sessionId?: string
+        options: SandboxCreateOptions = {}
     ): Promise<SandboxInstance> {
         const requestedTemplate = options.template ?? "base";
 
-        // If a sessionId is provided, only reuse sandboxes from the same session
+        // Only reuse sandboxes from the same session AND template
         // to prevent cross-run pollution (files, packages, env, processes)
         const existing = Array.from(this.activeSandboxes.values()).find(
             (s) =>
                 s.status === "running" &&
                 s.template === requestedTemplate &&
-                (!sessionId || s.metadata._sessionId === sessionId)
+                s.sessionId === options.sessionId
         );
 
         if (existing) {
-            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id} (template: ${existing.template}, session: ${sessionId ?? "any"})`);
+            console.log(`[SandboxManager] Reusing existing sandbox: ${existing.id} (template: ${existing.template}, session: ${existing.sessionId ?? "none"})`);
             return existing;
         }
 
-        // Tag new sandbox with sessionId for future reuse matching
-        const metadata = {
-            ...options.metadata,
-            ...(sessionId && { _sessionId: sessionId }),
-        };
-
-        return this.createSandbox({ ...options, metadata });
+        return this.createSandbox(options);
     }
 
     /**

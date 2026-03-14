@@ -37,6 +37,8 @@ export {
 export {
     DesktopController,
     getDesktopController,
+    disposeDesktopController,
+    disposeAllDesktopControllers,
     type DesktopCreateOptions,
     type DesktopAction,
     type DesktopState,

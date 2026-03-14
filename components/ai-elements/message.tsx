@@ -42,9 +42,11 @@ const customRehypePlugins = [
   [
     harden,
     {
-      allowedImagePrefixes: ["*"],
-      allowedLinkPrefixes: ["*"],
-      allowedProtocols: ["*"],
+      // Allow common image sources (agent generates these)
+      allowedImagePrefixes: ["https://", "http://", "/"],
+      // Allow standard link protocols
+      allowedLinkPrefixes: ["https://", "http://", "/", "mailto:", "tel:"],
+      allowedProtocols: ["https", "http", "mailto", "tel"],
       defaultOrigin: undefined,
       allowDataImages: true,
       imageBlockPolicy: "remove",

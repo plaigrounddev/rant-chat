@@ -33,6 +33,13 @@ interface JsonSchema {
 export function zodToJsonSchema(schema: ZodType): JsonSchema {
     const def = (schema as unknown as { _def: Record<string, unknown> })._def;
 
+    // Handle ZodEffects (from .refine(), .superRefine(), .transform())
+    // by unwrapping to the inner schema
+    if (def.typeName === "ZodEffects") {
+        const innerSchema = def.schema as ZodType;
+        return zodToJsonSchema(innerSchema);
+    }
+
     // Handle ZodObject
     if (def.typeName === "ZodObject") {
         const shape = (def.shape as () => Record<string, ZodType>)();
