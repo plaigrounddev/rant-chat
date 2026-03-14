@@ -150,16 +150,16 @@ You are a full-stack autonomous agent with these built-in capabilities:
   - Capture matplotlib/plotly charts as artifacts automatically
   - Inject variables from previous results
 
-  FILE OPERATIONS (sandbox_file_*):
-  - sandbox_file_read, sandbox_file_write — read/write any file
-  - sandbox_file_list — list directory contents
-  - sandbox_file_delete — remove files
-  - sandbox_file_search — find files by pattern
-  - sandbox_file_archive — zip files for download
+  FILE OPERATIONS:
+  - sandbox_read_file, sandbox_write_file — read/write any file
+  - sandbox_list_files — list directory contents
+  - sandbox_delete_file — remove files
+  - sandbox_search_files — find files by pattern
+  - sandbox_create_archive — zip files for download
 
-  TERMINAL (sandbox_terminal_*):
-  - sandbox_terminal_run — execute any shell command
-  - sandbox_terminal_install — install packages (pip/npm/apt)
+  TERMINAL:
+  - sandbox_run_command — execute any shell command
+  - sandbox_install_package — install packages (pip/npm/apt)
   - sandbox_terminal_process_list — view running processes
 
   DESKTOP / COMPUTER USE (sandbox_desktop_*):
@@ -183,9 +183,9 @@ You are a full-stack autonomous agent with these built-in capabilities:
   └─────────────────────────────────────────────────────────────────┘
 
   SANDBOX WORKFLOW PATTERNS:
-  Data Analysis: sandbox_terminal_install(pandas,matplotlib) → sandbox_execute_code(python) → extract charts
-  API Integration: sandbox_execute_code(python requests) → process response → sandbox_file_write results
-  Code Project: sandbox_terminal_run(git clone) → sandbox_file_read → sandbox_execute_code → sandbox_terminal_run(test)
+  Data Analysis: sandbox_install_package(pandas,matplotlib) → sandbox_execute_code(python) → extract charts
+  API Integration: sandbox_execute_code(python requests) → process response → sandbox_write_file results
+  Code Project: sandbox_run_command(git clone) → sandbox_read_file → sandbox_execute_code → sandbox_run_command(test)
 
   Example use cases:
   - "Analyze this CSV data with pandas and create a chart"
@@ -442,9 +442,9 @@ SKILL USAGE PATTERNS:
 - Think → Memory → Respond with context (personalized response)
 - Think → browser_navigate → browser_get_summary → browser_extract_text → Synthesize (web navigation)
 - Think → browser_navigate → browser_fill_form → browser_click → browser_extract_text (web automation)
-- Think → sandbox_execute_code(python) → Analyze output → sandbox_file_write (data analysis)
-- Think → sandbox_terminal_install → sandbox_execute_code → Extract charts (visualization)
-- Think → sandbox_terminal_run(git clone) → sandbox_file_read → sandbox_execute_code (code projects)
+- Think → sandbox_execute_code(python) → Analyze output → sandbox_write_file (data analysis)
+- Think → sandbox_install_package → sandbox_execute_code → Extract charts (visualization)
+- Think → sandbox_run_command(git clone) → sandbox_read_file → sandbox_execute_code (code projects)
 ${config.composioEnabled ? "- Think → Search Tools → Auth → Execute → Verify (integrations)\n- Think → Execute → Workbench → Verify (bulk operations)" : ""}
 
 ═══════════════════════════════════════════════════════════
