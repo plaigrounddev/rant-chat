@@ -186,10 +186,10 @@ export class DesktopController {
     // Shell Commands (within desktop sandbox)
     // -------------------------------------------------------------------------
 
-    async runCommand(command: string): Promise<string> {
+    async runCommand(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
         this.ensureSandbox();
         const result = await this.sandbox!.commands.run(command);
-        return result.stdout;
+        return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
     }
 
     // -------------------------------------------------------------------------
@@ -203,31 +203,39 @@ export class DesktopController {
     async executeAction(action: DesktopAction): Promise<void> {
         switch (action.type) {
             case "click":
-                await this.leftClick(action.x!, action.y!);
+                if (action.x == null || action.y == null) throw new Error("click requires x and y coordinates");
+                await this.leftClick(action.x, action.y);
                 break;
             case "double_click":
-                await this.doubleClick(action.x!, action.y!);
+                if (action.x == null || action.y == null) throw new Error("double_click requires x and y coordinates");
+                await this.doubleClick(action.x, action.y);
                 break;
             case "right_click":
-                await this.rightClick(action.x!, action.y!);
+                if (action.x == null || action.y == null) throw new Error("right_click requires x and y coordinates");
+                await this.rightClick(action.x, action.y);
                 break;
             case "type":
-                await this.type(action.text!);
+                if (!action.text) throw new Error("type requires text");
+                await this.type(action.text);
                 break;
             case "press":
-                await this.press(action.key!);
+                if (!action.key) throw new Error("press requires key");
+                await this.press(action.key);
                 break;
             case "scroll":
                 await this.scroll(action.direction ?? "down", action.ticks ?? 3);
                 break;
             case "drag":
+                if (action.startX == null || action.startY == null || action.endX == null || action.endY == null)
+                    throw new Error("drag requires startX, startY, endX, endY");
                 await this.drag(
-                    [action.startX!, action.startY!],
-                    [action.endX!, action.endY!]
+                    [action.startX, action.startY],
+                    [action.endX, action.endY]
                 );
                 break;
             case "move":
-                await this.moveMouse(action.x!, action.y!);
+                if (action.x == null || action.y == null) throw new Error("move requires x and y coordinates");
+                await this.moveMouse(action.x, action.y);
                 break;
         }
     }

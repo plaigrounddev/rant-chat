@@ -204,6 +204,12 @@ export class CodeExecutor {
         const assignments: string[] = [];
 
         for (const [key, value] of Object.entries(variables)) {
+            // Validate variable names to prevent injection
+            if (!this.isValidVariableName(key)) {
+                console.warn(`[CodeExecutor] Skipping invalid variable name: "${key}"`);
+                continue;
+            }
+
             const serialized = JSON.stringify(value);
 
             switch (language) {
@@ -227,5 +233,13 @@ export class CodeExecutor {
         }
 
         return `${assignments.join("\n")}\n\n${code}`;
+    }
+
+    /**
+     * Validate that a variable name is safe (alphanumeric + underscores only,
+     * must start with a letter or underscore).
+     */
+    private isValidVariableName(name: string): boolean {
+        return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
     }
 }

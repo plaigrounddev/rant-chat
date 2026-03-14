@@ -49,7 +49,12 @@ export function SandboxTerminal({
             </div>
 
             {/* Terminal body */}
-            <div className="p-4 max-h-[400px] overflow-y-auto space-y-1">
+            <div
+                className="p-4 max-h-[400px] overflow-y-auto space-y-1"
+                role="log"
+                aria-live="polite"
+                aria-label="Terminal output"
+            >
                 {entries.map((entry, i) => (
                     <TerminalLine key={i} entry={entry} />
                 ))}

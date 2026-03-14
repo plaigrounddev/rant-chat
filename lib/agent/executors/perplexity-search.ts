@@ -18,6 +18,9 @@ export async function perplexitySearch(query: string): Promise<string> {
     }
 
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
         const response = await fetch(OPENROUTER_URL, {
             method: "POST",
             headers: {
@@ -35,7 +38,10 @@ export async function perplexitySearch(query: string): Promise<string> {
                     },
                 ],
             }),
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorText = await response.text();

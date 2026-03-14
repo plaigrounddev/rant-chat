@@ -107,7 +107,10 @@ export const browserWaitSchema = z.object({
         .number()
         .optional()
         .describe("Wait for a fixed number of milliseconds instead of a selector"),
-});
+}).refine(
+    (data) => (data.selector != null) !== (data.ms != null),
+    { message: "Specify exactly one of 'selector' (wait for element) or 'ms' (fixed delay), not both or neither" }
+);
 
 export const browserGetLinksSchema = z.object({}).describe("No parameters needed — extracts all links from the current page");
 

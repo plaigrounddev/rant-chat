@@ -80,12 +80,12 @@ export class KernelBrowserManager {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const raw = kernelBrowser as any;
-            const browserId: string = raw.id ?? crypto.randomUUID();
+            const browserId: string = raw.session_id ?? crypto.randomUUID();
 
             const instance: BrowserInstance = {
                 id: browserId,
                 cdpWsUrl: kernelBrowser.cdp_ws_url,
-                liveViewUrl: raw.live_view_url ?? undefined,
+                liveViewUrl: raw.browser_live_view_url ?? raw.live_view_url ?? undefined,
                 createdAt: new Date(),
                 expiresAt: new Date(Date.now() + timeoutMs),
                 status: "running",
