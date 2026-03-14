@@ -102,7 +102,9 @@ function zodTypeToJsonSchema(schema: ZodType): JsonSchemaProperty {
         case "ZodDefault": {
             const innerSchema = def.innerType as ZodType;
             const result = zodTypeToJsonSchema(innerSchema);
-            result.default = def.defaultValue;
+            result.default = typeof def.defaultValue === "function"
+                ? def.defaultValue()
+                : def.defaultValue;
             return result;
         }
 

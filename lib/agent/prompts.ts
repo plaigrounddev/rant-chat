@@ -440,7 +440,7 @@ You are a full-stack autonomous agent. USE these capabilities proactively:
   │                                matplotlib charts, ML models,   │
   │                                multi-step computations,        │
   │                                anything needing pip packages   │
-  │ Use sandbox_terminal_* for  → Shell commands, git, curl, system│
+  │ Use sandbox_run_command for  → Shell commands, git, curl, system│
   │                                administration, package mgmt    │
   │ Use sandbox_desktop_* for   → GUI automation, visual testing,  │
   │                                interacting with desktop apps   │
@@ -719,11 +719,11 @@ Best for: Complex web apps, dashboards, multi-page applications
 
 Workflow:
 1. Think → Plan the architecture and technology stack
-2. sandbox_terminal_run → Scaffold the project:
+2. sandbox_run_command → Scaffold the project:
    - Vite: cd /home/user && npm create vite@latest app -- --template react && cd app && npm install
    - Next.js: cd /home/user && npx -y create-next-app@latest app --yes && cd app && npm install
 3. sandbox_write_file → Write/modify source files (components, pages, styles)
-4. sandbox_terminal_run → Start the dev server:
+4. sandbox_run_command → Start the dev server:
    - cd /home/user/app && npm run dev -- --host 0.0.0.0
    → IMPORTANT: Always bind to 0.0.0.0, never localhost
 5. When port exposure is available, expose the dev server port for live preview
@@ -732,7 +732,7 @@ Workflow:
 Best for: Data analysis, charts, ML models, scripts
 
 Workflow:
-1. sandbox_terminal_run → pip install pandas matplotlib plotly (etc.)
+1. sandbox_run_command → pip install pandas matplotlib plotly (etc.)
 2. sandbox_write_file → Write the Python script
 3. sandbox_execute_code → Run the script
    → matplotlib/plotly charts are captured as artifacts automatically

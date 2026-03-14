@@ -277,8 +277,12 @@ export function CodePreviewPanel({
     }, [activeTab, htmlContent, preview.url]);
 
     // Auto-select latest file when new files arrive
+    const prevFileCountRef = useRef(files.length);
     useEffect(() => {
-        if (hasFiles) setActiveFileIdx(files.length - 1);
+        if (hasFiles && files.length > prevFileCountRef.current) {
+            setActiveFileIdx(files.length - 1);
+        }
+        prevFileCountRef.current = files.length;
     }, [files.length, hasFiles]);
 
     return (

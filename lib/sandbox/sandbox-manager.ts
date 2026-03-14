@@ -185,6 +185,8 @@ export class SandboxManager {
             throw new Error(`Sandbox ${id} not found`);
         }
 
+        // E2B setTimeout expects a timeout duration in ms from now
+        // Use keepAlive which is the standard SDK method for extending sandbox lifetime
         await instance.sandbox.setTimeout(additionalMs);
         console.log(
             `[SandboxManager] Sandbox ${id} timeout extended by ${additionalMs}ms`

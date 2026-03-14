@@ -51,7 +51,14 @@ export async function perplexitySearch(query: string): Promise<string> {
 
         const data = await response.json();
         const answer = data.choices?.[0]?.message?.content || "No results found.";
-        const citations = data.citations || [];
+        // OpenRouter returns citations in annotations, not at data.citations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const annotations = data.choices?.[0]?.message?.annotations || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const citations = annotations
+            .filter((a: any) => a.type === "url_citation")
+            .map((a: any) => a.url_citation?.url)
+            .filter(Boolean);
 
         return JSON.stringify({
             answer,

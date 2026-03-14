@@ -219,6 +219,11 @@ registerSkill({
         if (!urls || !Array.isArray(urls) || urls.length === 0) {
             return JSON.stringify({ error: "urls must be a non-empty array of strings" });
         }
+        // Validate each URL is a non-empty string
+        const validUrls = urls.filter((u) => typeof u === "string" && u.trim().length > 0);
+        if (validUrls.length === 0) {
+            return JSON.stringify({ error: "urls must contain at least one valid URL string" });
+        }
         const objective = asNonEmptyString(args.objective);
         return parallelExtract(urls, objective || undefined);
     },
@@ -787,7 +792,9 @@ registerSkill({
                 error: "namespace is required — provide the user's ID or a project-scoped namespace",
             });
         }
-        const limit = typeof args.limit === "number" ? Math.min(args.limit, 50) : 10;
+        const limit = typeof args.limit === "number" && args.limit > 0
+            ? Math.min(args.limit, 50)
+            : 10;
         const fileType = typeof args.file_type === "string" ? args.file_type : undefined;
 
         return searchKnowledge({ query, namespace, limit, fileType });
