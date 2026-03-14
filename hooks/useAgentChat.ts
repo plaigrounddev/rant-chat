@@ -88,7 +88,7 @@ export function useAgentChat() {
 
         // Abort any existing request
         if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
+            abortControllerRef.current.abort("new_message");
         }
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
@@ -505,7 +505,7 @@ export function useAgentChat() {
         setActivePreview(null);
         previousResponseIdRef.current = null;
         if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
+            abortControllerRef.current.abort("chat_reset");
         }
     }, []);
 

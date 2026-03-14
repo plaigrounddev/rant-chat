@@ -77,6 +77,46 @@ function rehypeProxyImages() {
   }
 }
 
+// ── Rehype plugin: fix <div> inside <p> hydration error ────────────────────
+// Streamdown wraps images in <div> containers, but markdown embeds them inside
+// <p> tags. In HTML, <div> cannot be a descendant of <p>, causing React
+// hydration mismatches. This plugin converts any <p> that contains a
+// block-level child (div, img, figure, etc.) into a <div>.
+const BLOCK_TAGS = new Set(["div", "figure", "img", "pre", "table", "blockquote", "hr", "ul", "ol"]);
+
+function rehypeUnwrapImages() {
+  return (tree: { type: string; children: unknown[] }) => {
+    visitUnwrap(tree);
+  };
+
+  function hasBlockChild(children: unknown[]): boolean {
+    for (const child of children) {
+      const c = child as Record<string, unknown>;
+      if (c.type === "element" && BLOCK_TAGS.has(c.tagName as string)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function visitUnwrap(node: Record<string, unknown>) {
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        visitUnwrap(child as Record<string, unknown>);
+      }
+      // After visiting children, check if this is a <p> with block children
+      if (
+        node.type === "element" &&
+        node.tagName === "p" &&
+        hasBlockChild(node.children as unknown[])
+      ) {
+        // Convert <p> to <div> to prevent hydration error
+        node.tagName = "div";
+      }
+    }
+  }
+}
+
 const customRehypePlugins = [
   rehypeRaw,
   [rehypeSanitize, sanitizeSchema],
@@ -93,6 +133,7 @@ const customRehypePlugins = [
     },
   ],
   rehypeProxyImages,
+  rehypeUnwrapImages,
 ] as Parameters<typeof Streamdown>[0]["rehypePlugins"];
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
