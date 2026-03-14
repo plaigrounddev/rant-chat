@@ -208,8 +208,9 @@ export function CodePreviewPanel({
     }, [preview.url]);
 
     // Write code directly into iframe for sandbox-less preview
+    // Only use doc.write when there's no external URL to load
     useEffect(() => {
-        if (activeTab === "preview" && preview.code && iframeRef.current) {
+        if (activeTab === "preview" && preview.code && !preview.url && iframeRef.current) {
             const doc = iframeRef.current.contentDocument;
             if (doc) {
                 doc.open();
@@ -217,7 +218,7 @@ export function CodePreviewPanel({
                 doc.close();
             }
         }
-    }, [activeTab, preview.code]);
+    }, [activeTab, preview.code, preview.url]);
 
     return (
         <div
@@ -259,7 +260,7 @@ export function CodePreviewPanel({
                         )}
                     </div>
 
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-xs font-medium text-foreground">
                         {preview.title || "Preview"}
                     </span>
                 </div>
@@ -320,14 +321,14 @@ export function CodePreviewPanel({
                                 ref={iframeRef}
                                 src={preview.url}
                                 className="size-full border-0"
-                                title="Code Preview"
+                                title={preview.title || "Code Preview"}
                                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
                             />
                         ) : preview.code ? (
                             <iframe
                                 ref={iframeRef}
                                 className="size-full border-0"
-                                title="Code Preview"
+                                title={preview.title || "Code Preview"}
                                 sandbox="allow-scripts"
                             />
                         ) : (
@@ -335,7 +336,10 @@ export function CodePreviewPanel({
                                 <div className="flex flex-col items-center gap-3">
                                     <div className="size-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                                     <span className="text-sm text-muted-foreground">
-                                        Generating preview...
+                                        Building your app...
+                                    </span>
+                                    <span className="text-xs text-muted-foreground/60">
+                                        This may take a moment
                                     </span>
                                 </div>
                             </div>

@@ -14,11 +14,10 @@ export default function AgentPage() {
                     Back
                 </Link>
             </header>
-            <div className="flex-1 overflow-hidden flex justify-center bg-muted/20">
-                <div className="w-full max-w-3xl h-full border-x bg-background shadow-sm pt-14">
-                    <AgentChat />
-                </div>
+            <div className="flex-1 overflow-hidden flex bg-muted/20 pt-14">
+                <AgentChat />
             </div>
         </div>
     );
 }
+

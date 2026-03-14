@@ -47,6 +47,7 @@ import { useCallback, useState } from "react";
 // ── Suggestions ────────────────────────────────────────────────────────────
 
 const suggestions = [
+    "Build me a beautiful todo app with dark mode",
     "Research everything about Anthropic — founding date, team size, and products",
     "Scrape https://news.ycombinator.com and give me today's top stories",
     "Remember that I prefer concise responses with bullet points",
@@ -225,9 +226,12 @@ function ToolCallCard({
 }) {
     const toolIcons: Record<string, React.ReactNode> = {
         web_search: <GlobeIcon className="size-4" />,
+        ask_perplexity: <GlobeIcon className="size-4" />,
+        extract_url: <LinkIcon className="size-4" />,
         scrape_website: <LinkIcon className="size-4" />,
         http_request: <SendIcon className="size-4" />,
         run_code: <CodeIcon className="size-4" />,
+        generate_app: <CodeIcon className="size-4" />,
         read_memories: <MemoryStickIcon className="size-4" />,
         create_memory: <BrainIcon className="size-4" />,
         update_memory: <BrainIcon className="size-4" />,
@@ -242,10 +246,13 @@ function ToolCallCard({
     };
 
     const toolLabels: Record<string, string> = {
-        web_search: "Web Search",
+        web_search: "Searching the Web",
+        ask_perplexity: "Searching with Perplexity",
+        extract_url: "Extracting URL Content",
         scrape_website: "Scraping Website",
         http_request: "HTTP Request",
         run_code: "Running Code",
+        generate_app: "Building App",
         read_memories: "Reading Memories",
         create_memory: "Storing Memory",
         update_memory: "Updating Memory",
@@ -509,11 +516,15 @@ export default function AgentChat() {
     );
 
     const isEmpty = messages.length === 0;
+    const hasCodePreview = activePreview?.type === "code";
 
     return (
         <div className="relative flex size-full overflow-hidden bg-background">
             {/* Main chat column */}
-            <div className={`relative flex flex-1 flex-col overflow-hidden transition-all duration-300 ${activePreview?.type === "code" ? "w-[55%]" : "w-full"}`}>
+            <div className={`relative flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${hasCodePreview
+                ? "w-[50%] shrink-0 border-r border-border/50"
+                : "w-full"
+                }`}>
                 {/* Empty state */}
                 {isEmpty && (
                     <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
@@ -652,8 +663,8 @@ export default function AgentChat() {
             </div>
 
             {/* Code preview side panel (v0-style) */}
-            {activePreview?.type === "code" && (
-                <div className="h-full w-[45%] shrink-0 animate-in slide-in-from-right duration-300">
+            {hasCodePreview && (
+                <div className="h-full flex-1 animate-in slide-in-from-right duration-300">
                     <CodePreviewPanel
                         preview={activePreview}
                         onClose={dismissPreview}

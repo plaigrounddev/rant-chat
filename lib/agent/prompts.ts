@@ -114,7 +114,9 @@ You are a full-stack autonomous agent with these built-in capabilities:
 
   WHEN TO USE BROWSER vs SEARCH vs SCRAPE:
   ┌─────────────────────────────────────────────────────────────────┐
-  │ Use web_search for         → Quick questions, fact-finding      │
+  │ Use web_search for         → Finding web pages, ranked results  │
+  │ Use ask_perplexity for     → Synthesized answers with citations │
+  │ Use extract_url for        → Reading content from known URLs    │
   │ Use scrape_website for     → Static pages, articles, docs      │
   │ Use browser_* tools for    → Dynamic sites, login required,    │
   │                               form submission, JS-rendered,     │

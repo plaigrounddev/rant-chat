@@ -421,6 +421,25 @@ async function runAgentLoop(
                                             }
                                         }
 
+                                        // Detect generate_app results with live demo URL
+                                        if (fc.name === "generate_app") {
+                                            try {
+                                                const parsed = JSON.parse(result);
+                                                if (parsed.success && (parsed.demoUrl || parsed.code)) {
+                                                    sendSSE("code_preview", {
+                                                        id: `app-${fc.call_id}`,
+                                                        title: (args.prompt as string)?.slice(0, 60) || "Generated App",
+                                                        url: parsed.demoUrl || "",
+                                                        code: parsed.code || "",
+                                                        language: "tsx",
+                                                        chatId: parsed.chatId,
+                                                    });
+                                                }
+                                            } catch {
+                                                // Ignore parse errors for preview detection
+                                            }
+                                        }
+
                                         sendSSE("task_step", {
                                             taskId: taskRun.id,
                                             step: {

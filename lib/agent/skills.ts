@@ -20,7 +20,9 @@ import { memoryStore } from "./memory";
 import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
+import { generateApp } from "./executors/generate-app";
 import { perplexitySearch } from "./executors/perplexity-search";
+import { parallelWebSearch, parallelExtract } from "./executors/parallel-search";
 import { searchKnowledge } from "./executors/embedding-search";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -128,17 +130,17 @@ registerSkill({
     },
 });
 
-// Web Search — Perplexity Sonar via OpenRouter
+// Web Search — Parallel AI Search API (ranked URLs with excerpts)
 registerSkill({
     name: "web_search",
     description:
-        "Search the web for current information on any topic. Returns a comprehensive answer with source citations. Use for research, fact-finding, news, and any question requiring up-to-date information.",
+        "Search the web for current information. Returns ranked URLs with titles, excerpts, and publish dates. Best for finding specific web pages, articles, and sources.",
     category: "web-browsing",
     toolDefinition: {
         type: "function",
         name: "web_search",
         description:
-            "Search the web for current information. Returns a comprehensive answer with source citations. Use for research, fact-finding, news, and any question needing up-to-date information.",
+            "Search the web and get ranked results with URLs, titles, and excerpts. Use for finding web pages, articles, news, and sources on any topic.",
         parameters: {
             type: "object",
             properties: {
@@ -146,6 +148,82 @@ registerSkill({
                     type: "string",
                     description:
                         "The search query — be specific and descriptive for best results",
+                },
+                mode: {
+                    type: "string",
+                    description:
+                        "Search mode: 'fast' (lower latency), 'one-shot' (comprehensive), or 'agentic' (concise for tool loops). Default: fast",
+                    enum: ["fast", "one-shot", "agentic"],
+                },
+            },
+            required: ["query"],
+        },
+    },
+    executor: async (args) => {
+        const query = asNonEmptyString(args.query);
+        if (!query) return JSON.stringify({ error: "query must be a non-empty string" });
+        const mode = (args.mode as "fast" | "one-shot" | "agentic") || "fast";
+        return parallelWebSearch(query, mode);
+    },
+});
+
+// Extract URL — Parallel AI Extract API (scrape content from specific URLs)
+registerSkill({
+    name: "extract_url",
+    description:
+        "Extract and read the content of one or more web pages. Returns clean, LLM-optimized excerpts from the URLs. Use when you have specific URLs to read.",
+    category: "web-browsing",
+    toolDefinition: {
+        type: "function",
+        name: "extract_url",
+        description:
+            "Extract content from specific URLs. Returns clean excerpts. Use when you need to read the content of known web pages.",
+        parameters: {
+            type: "object",
+            properties: {
+                urls: {
+                    type: "array",
+                    items: { type: "string" },
+                    description:
+                        "One or more URLs to extract content from",
+                },
+                objective: {
+                    type: "string",
+                    description:
+                        "Optional objective to focus the extraction on specific information",
+                },
+            },
+            required: ["urls"],
+        },
+    },
+    executor: async (args) => {
+        const urls = args.urls as string[];
+        if (!urls || !Array.isArray(urls) || urls.length === 0) {
+            return JSON.stringify({ error: "urls must be a non-empty array of strings" });
+        }
+        const objective = asNonEmptyString(args.objective);
+        return parallelExtract(urls, objective || undefined);
+    },
+});
+
+// Ask Perplexity — LLM knowledge search via Perplexity Sonar (OpenRouter)
+registerSkill({
+    name: "ask_perplexity",
+    description:
+        "Ask Perplexity AI for a comprehensive, synthesized answer with source citations. Best for questions that need a direct answer rather than a list of links.",
+    category: "web-browsing",
+    toolDefinition: {
+        type: "function",
+        name: "ask_perplexity",
+        description:
+            "Ask Perplexity AI a question and get a comprehensive answer with citations. Use when you need a synthesized answer rather than raw web results.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description:
+                        "The question to ask Perplexity — be specific for best results",
                 },
             },
             required: ["query"],
@@ -232,6 +310,42 @@ registerSkill({
         const code = asNonEmptyString(args.code);
         if (!code) return JSON.stringify({ error: "code must be a non-empty string" });
         return runCode(code);
+    },
+});
+
+// Generate App — v0-style app builder
+registerSkill({
+    name: "generate_app",
+    description:
+        "Generate a web application from a text description using AI. Creates a live, working preview hosted on the web. Use this when the user asks you to build, create, or code a web page, component, app, or UI. Returns a live demo URL and code. You can iterate on existing apps by passing the chatId from a previous generation.",
+    category: "code",
+    toolDefinition: {
+        type: "function",
+        name: "generate_app",
+        description:
+            "Generate a web application from a text description. Creates a live preview. Use when the user wants you to build a web page, component, or app.",
+        parameters: {
+            type: "object",
+            properties: {
+                prompt: {
+                    type: "string",
+                    description:
+                        "Detailed description of what to build. Be specific about design, features, and behavior. Include styling preferences (e.g. 'dark mode', 'minimalist', 'glassmorphism').",
+                },
+                chatId: {
+                    type: "string",
+                    description:
+                        "Optional. Pass the chatId from a previous generate_app result to iterate on the same app (e.g. 'add a dark mode toggle').",
+                },
+            },
+            required: ["prompt"],
+        },
+    },
+    executor: async (args) => {
+        const prompt = asNonEmptyString(args.prompt);
+        if (!prompt) return JSON.stringify({ error: "prompt must be a non-empty string" });
+        const chatId = asNonEmptyString(args.chatId);
+        return generateApp(prompt, chatId);
     },
 });
 
