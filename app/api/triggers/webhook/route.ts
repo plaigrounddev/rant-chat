@@ -4,15 +4,54 @@
  * POST /api/triggers/webhook
  *
  * Receives event payloads from Composio when triggers fire.
- * Verifies HMAC-SHA256 signatures and stores events.
+ * Verifies HMAC-SHA256 signatures and stores events durably in Convex.
+ *
+ * Event flow: Composio → this webhook → Convex triggerEvents table
+ *           → cron job picks up pending → enqueues agent task
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { verifyWebhook, storeEvent, type TriggerEvent } from "@/lib/agent/triggers";
+import { verifyWebhook } from "@/lib/agent/triggers";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../../../../convex/_generated/api";
+
+// Lazy-init Convex HTTP client (server-side, no auth needed for public mutations)
+let _convex: ConvexHttpClient | null = null;
+function getConvex(): ConvexHttpClient | null {
+    if (_convex) return _convex;
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) return null;
+    _convex = new ConvexHttpClient(url);
+    return _convex;
+}
+
+/**
+ * Store a trigger event in Convex.
+ */
+async function storeEvent(event: {
+    triggerSlug: string;
+    toolkitSlug: string;
+    userId?: string;
+    triggerId?: string;
+    payload: unknown;
+}) {
+    const convex = getConvex();
+    if (!convex) {
+        console.warn("[Webhook] Convex not configured, event not persisted:", event.triggerSlug);
+        return;
+    }
+
+    await convex.mutation(api.triggerEvents.ingestFromWebhook, {
+        triggerSlug: event.triggerSlug,
+        toolkitSlug: event.toolkitSlug,
+        userId: event.userId,
+        triggerId: event.triggerId,
+        payload: event.payload,
+    });
+}
 
 export async function POST(request: NextRequest) {
     try {
-        // Read raw body for signature verification
         const rawBody = await request.text();
 
         // Extract Composio webhook headers
@@ -20,10 +59,10 @@ export async function POST(request: NextRequest) {
         const webhookTimestamp = request.headers.get("webhook-timestamp") || "";
         const webhookSignature = request.headers.get("webhook-signature") || "";
 
-        // If we have a webhook secret, verify the signature
         const hasSecret = !!process.env.COMPOSIO_WEBHOOK_SECRET;
 
         if (hasSecret && webhookSignature) {
+            // ── Verified mode (production) ─────────────────────────────
             const verification = await verifyWebhook({
                 payload: rawBody,
                 signature: webhookSignature,
@@ -32,62 +71,65 @@ export async function POST(request: NextRequest) {
             });
 
             if (!verification.valid) {
-                console.error(
-                    "[Webhook] Signature verification failed:",
-                    verification.error
-                );
+                console.error("[Webhook] Signature verification failed:", verification.error);
                 return NextResponse.json(
                     { error: "Invalid webhook signature" },
                     { status: 401 }
                 );
             }
 
-            // Store the verified event
             if (verification.data?.payload) {
                 const payload = verification.data.payload;
-                const event: TriggerEvent = {
-                    id: payload.id || "unknown",
+                await storeEvent({
                     triggerSlug: payload.triggerSlug || "unknown",
                     toolkitSlug: payload.toolkitSlug || "unknown",
                     userId: payload.userId,
+                    triggerId: payload.triggerId,
                     payload: payload.payload || payload,
-                    receivedAt: new Date().toISOString(),
-                };
-                storeEvent(event);
+                });
                 console.log(
-                    `[Webhook] ✅ Verified event: ${event.triggerSlug} from ${event.toolkitSlug}`
+                    `[Webhook] ✅ Verified event → Convex: ${payload.triggerSlug || "unknown"}`
                 );
             }
         } else {
-            // No secret configured — accept unverified (development mode)
+            // ── Unverified mode (development) ──────────────────────────
             try {
                 const data = JSON.parse(rawBody);
-                const event: TriggerEvent = {
-                    id: data.id || data.trigger_id || "unknown",
-                    triggerSlug:
-                        data.triggerSlug ||
-                        data.metadata?.trigger_slug ||
-                        data.metadata?.triggerName ||
-                        "unknown",
-                    toolkitSlug:
-                        data.toolkitSlug ||
-                        data.metadata?.toolkit_slug ||
-                        data.appName ||
-                        "unknown",
-                    userId:
-                        data.userId ||
-                        data.metadata?.user_id ||
-                        data.metadata?.connection?.clientUniqueUserId ||
-                        undefined,
+
+                // Parse V1, V2, V3 Composio payload formats
+                const triggerSlug =
+                    data.triggerSlug ||
+                    data.metadata?.trigger_slug ||
+                    data.metadata?.triggerName ||
+                    "unknown";
+                const toolkitSlug =
+                    data.toolkitSlug ||
+                    data.metadata?.toolkit_slug ||
+                    data.appName ||
+                    "unknown";
+                const userId =
+                    data.userId ||
+                    data.metadata?.user_id ||
+                    data.metadata?.connection?.clientUniqueUserId ||
+                    undefined;
+                const triggerId =
+                    data.triggerId ||
+                    data.metadata?.trigger_id ||
+                    undefined;
+
+                await storeEvent({
+                    triggerSlug,
+                    toolkitSlug,
+                    userId,
+                    triggerId,
                     payload: data.payload || data.data || data,
-                    receivedAt: new Date().toISOString(),
-                };
-                storeEvent(event);
+                });
+
                 console.log(
-                    `[Webhook] ⚠️ Unverified event (no secret): ${event.triggerSlug} from ${event.toolkitSlug}`
+                    `[Webhook] ⚠️ Unverified event → Convex: ${triggerSlug}`
                 );
             } catch {
-                console.error("[Webhook] Failed to parse payload:", rawBody.slice(0, 200));
+                console.error("[Webhook] Invalid payload:", rawBody.slice(0, 200));
                 return NextResponse.json(
                     { error: "Invalid payload" },
                     { status: 400 }
@@ -110,6 +152,7 @@ export async function GET() {
     return NextResponse.json({
         status: "ok",
         endpoint: "/api/triggers/webhook",
-        description: "Composio trigger webhook endpoint",
+        storage: "convex",
+        description: "Composio trigger webhook endpoint → Convex triggerEvents table",
     });
 }

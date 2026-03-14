@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as automations from "../automations.js";
+import type * as crons from "../crons.js";
 import type * as embeddedFiles from "../embeddedFiles.js";
 import type * as embeddings from "../embeddings.js";
 import type * as http from "../http.js";
@@ -15,6 +17,7 @@ import type * as messages from "../messages.js";
 import type * as staticHosting from "../staticHosting.js";
 import type * as taskQueue from "../taskQueue.js";
 import type * as threads from "../threads.js";
+import type * as triggerEvents from "../triggerEvents.js";
 import type * as users from "../users.js";
 import type * as workflows from "../workflows.js";
 
@@ -25,6 +28,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  automations: typeof automations;
+  crons: typeof crons;
   embeddedFiles: typeof embeddedFiles;
   embeddings: typeof embeddings;
   http: typeof http;
@@ -32,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   staticHosting: typeof staticHosting;
   taskQueue: typeof taskQueue;
   threads: typeof threads;
+  triggerEvents: typeof triggerEvents;
   users: typeof users;
   workflows: typeof workflows;
 }>;

@@ -129,4 +129,40 @@ export default defineSchema({
     })
         .index("by_user", ["userId", "createdAt"])
         .index("by_status", ["status"]),
+
+    // ── Trigger Events (Composio webhook events, durable) ──────────────
+    triggerEvents: defineTable({
+        userId: v.optional(v.string()),    // Composio user ID (string, not Convex ID)
+        triggerSlug: v.string(),           // e.g., "GMAIL_NEW_GMAIL_MESSAGE"
+        triggerId: v.optional(v.string()), // Composio trigger instance ID
+        toolkitSlug: v.string(),           // e.g., "gmail"
+        payload: v.any(),                  // Raw event data from Composio
+        status: v.union(
+            v.literal("pending"),          // Received, not yet processed
+            v.literal("processing"),       // Agent is handling it
+            v.literal("completed"),        // Done
+            v.literal("failed"),           // Processing failed
+        ),
+        errorMessage: v.optional(v.string()),
+        processedAt: v.optional(v.number()),
+        createdAt: v.number(),
+    })
+        .index("by_status", ["status", "createdAt"])
+        .index("by_trigger", ["triggerSlug", "createdAt"])
+        .index("by_user", ["userId", "createdAt"]),
+
+    // ── Automation Logs (cron job execution history) ────────────────────
+    automationLogs: defineTable({
+        automationType: v.string(),        // "email_triage", "follow_up_check", etc.
+        status: v.union(
+            v.literal("started"),
+            v.literal("completed"),
+            v.literal("failed"),
+        ),
+        details: v.optional(v.string()),
+        itemsProcessed: v.optional(v.number()),
+        durationMs: v.optional(v.number()),
+        createdAt: v.number(),
+    })
+        .index("by_type", ["automationType", "createdAt"]),
 });
