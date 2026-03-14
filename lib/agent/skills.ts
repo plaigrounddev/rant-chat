@@ -23,6 +23,11 @@ import { runCode } from "./executors/code-runner";
 import { perplexitySearch } from "./executors/perplexity-search";
 import { parallelWebSearch, parallelExtract } from "./executors/parallel-search";
 import { searchKnowledge } from "./executors/embedding-search";
+import { executeSubAgent } from "./executors/sub-agent-executor";
+import { listSubAgents } from "./sub-agents";
+
+// Force sub-agent registration on module load
+import "./sub-agents";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -847,3 +852,77 @@ registerSkill({
         }
     },
 });
+
+// ── Multi-Agent Handoff ───────────────────────────────────────────────────
+
+registerSkill({
+    name: "delegate_to",
+    description:
+        "DELEGATE a specialized task to a sub-agent. The sub-agent runs autonomously with its own model and tools, " +
+        "then returns results back to you. Available sub-agents:\n" +
+        "  • frontend-design — Creates stunning, production-grade web interfaces (websites, dashboards, landing pages, " +
+        "React components) using Gemini 2.5 Flash. Has full sandbox access to write code, install packages, and run dev servers.\n\n" +
+        "USE THIS when the user asks to build any visual web UI, page, component, poster, or application. " +
+        "The design agent produces much higher quality frontend code than you can alone.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "delegate_to",
+        description:
+            "Delegate a task to a specialized sub-agent. Returns the sub-agent's response and any artifacts created.",
+        parameters: {
+            type: "object",
+            properties: {
+                agent: {
+                    type: "string",
+                    description:
+                        "ID of the sub-agent to delegate to. Available: 'frontend-design'",
+                },
+                task: {
+                    type: "string",
+                    description:
+                        "Detailed task description for the sub-agent. Be specific about requirements, style preferences, " +
+                        "frameworks to use, and expected deliverables. The more detail you provide, the better the result.",
+                },
+            },
+            required: ["agent", "task"],
+        },
+    },
+    executor: async (args) => {
+        const agentId = asNonEmptyString(args.agent);
+        const task = asNonEmptyString(args.task);
+
+        if (!agentId) return JSON.stringify({ error: "agent ID is required" });
+        if (!task) return JSON.stringify({ error: "task description is required" });
+
+        // Validate the sub-agent exists
+        const availableAgents = listSubAgents();
+        const agentIds = availableAgents.map((a) => a.id);
+        if (!agentIds.includes(agentId)) {
+            return JSON.stringify({
+                error: `Unknown sub-agent "${agentId}". Available: ${agentIds.join(", ")}`,
+                available: availableAgents.map((a) => ({
+                    id: a.id,
+                    name: a.name,
+                    description: a.description,
+                })),
+            });
+        }
+
+        console.log(`[AGENT] 🤝 Delegating to sub-agent: ${agentId}`);
+        console.log(`[AGENT]    Task: ${task.slice(0, 150)}...`);
+
+        const result = await executeSubAgent(agentId, task);
+
+        return JSON.stringify({
+            success: result.success,
+            agentName: result.agentName,
+            response: result.response,
+            toolRounds: result.toolRounds,
+            toolCallsExecuted: result.toolCallsExecuted,
+            artifacts: result.artifacts,
+            ...(result.error && { error: result.error }),
+        });
+    },
+});
+
