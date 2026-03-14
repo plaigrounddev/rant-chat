@@ -44,6 +44,39 @@ const sanitizeSchema = {
     src: ["https", "http", "data"],
   },
 };
+// ── Rehype plugin: proxy external images through /api/image-proxy ──────────
+// Rewrites external img[src] to go through our server-side proxy,
+// avoiding CORS/ORB browser restrictions on cross-origin images.
+function rehypeProxyImages() {
+  return (tree: { type: string; children: unknown[] }) => {
+    visit(tree);
+  };
+
+  function visit(node: Record<string, unknown>) {
+    if (
+      node.type === "element" &&
+      node.tagName === "img" &&
+      node.properties &&
+      typeof (node.properties as Record<string, unknown>).src === "string"
+    ) {
+      const src = (node.properties as Record<string, string>).src;
+      // Only proxy absolute http/https URLs — skip data:, relative, and already-proxied
+      if (
+        (src.startsWith("https://") || src.startsWith("http://")) &&
+        !src.startsWith("/api/image-proxy")
+      ) {
+        (node.properties as Record<string, string>).src =
+          `/api/image-proxy?url=${encodeURIComponent(src)}`;
+      }
+    }
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        visit(child as Record<string, unknown>);
+      }
+    }
+  }
+}
+
 const customRehypePlugins = [
   rehypeRaw,
   [rehypeSanitize, sanitizeSchema],
@@ -59,6 +92,7 @@ const customRehypePlugins = [
       imageBlockPolicy: "remove",
     },
   ],
+  rehypeProxyImages,
 ] as Parameters<typeof Streamdown>[0]["rehypePlugins"];
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
