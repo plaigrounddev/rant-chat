@@ -443,6 +443,24 @@ async function runAgentLoop(
                                             }
                                         }
 
+                                        // Detect sandbox port exposure — send live URL to preview panel
+                                        if (fc.name === "sandbox_expose_port") {
+                                            try {
+                                                const parsed = JSON.parse(result);
+                                                if (parsed.success && parsed.url) {
+                                                    sendSSE("code_preview", {
+                                                        id: `port-${fc.call_id}`,
+                                                        title: `Live Preview (port ${parsed.port})`,
+                                                        code: "",
+                                                        language: "html",
+                                                        url: parsed.url,
+                                                    });
+                                                }
+                                            } catch {
+                                                // Ignore parse errors
+                                            }
+                                        }
+
                                         sendSSE("task_step", {
                                             taskId: taskRun.id,
                                             step: {

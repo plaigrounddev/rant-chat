@@ -1,10 +1,20 @@
 // convex/http.ts
 // HTTP endpoints for file uploads to Convex storage + multimodal embedding
+// + static hosting for deployed apps
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { registerStaticRoutes } from "@convex-dev/static-hosting";
+import { components } from "./_generated/api";
 
 const http = httpRouter();
+
+// ── Static Hosting ─────────────────────────────────────────────────────
+// Serve deployed static apps at /app/* with SPA fallback
+registerStaticRoutes(http, components.selfHosting, {
+    pathPrefix: "/app",
+    spaFallback: true,
+});
 
 // ── File Upload Endpoint ────────────────────────────────────────────────
 // POST /upload — Accepts multipart file uploads, stores in Convex,

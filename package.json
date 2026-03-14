@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy:static": "npx @convex-dev/static-hosting deploy"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.43",
@@ -18,6 +19,7 @@
     "@composio/openai": "^0.6.4",
     "@convex-dev/agent": "^0.3.2",
     "@convex-dev/rag": "^0.7.1",
+    "@convex-dev/static-hosting": "^0.1.3",
     "@convex-dev/workflow": "^0.3.5",
     "@convex-dev/workpool": "^0.4.2",
     "@dnd-kit/core": "^6.3.1",

@@ -12,6 +12,7 @@ import type * as embeddedFiles from "../embeddedFiles.js";
 import type * as embeddings from "../embeddings.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
+import type * as staticHosting from "../staticHosting.js";
 import type * as taskQueue from "../taskQueue.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   embeddings: typeof embeddings;
   http: typeof http;
   messages: typeof messages;
+  staticHosting: typeof staticHosting;
   taskQueue: typeof taskQueue;
   threads: typeof threads;
   users: typeof users;
@@ -3764,6 +3766,74 @@ export declare const components: {
             startOrder: number;
           }>;
         }
+      >;
+    };
+  };
+  selfHosting: {
+    lib: {
+      gcOldAssets: FunctionReference<
+        "mutation",
+        "internal",
+        { currentDeploymentId: string },
+        { blobIds: Array<string>; storageIds: Array<string> }
+      >;
+      generateUploadUrl: FunctionReference<"mutation", "internal", {}, string>;
+      getByPath: FunctionReference<
+        "query",
+        "internal",
+        { path: string },
+        {
+          _creationTime: number;
+          _id: string;
+          blobId?: string;
+          contentType: string;
+          deploymentId: string;
+          path: string;
+          storageId?: string;
+        } | null
+      >;
+      getCurrentDeployment: FunctionReference<
+        "query",
+        "internal",
+        {},
+        {
+          _creationTime: number;
+          _id: string;
+          currentDeploymentId: string;
+          deployedAt: number;
+        } | null
+      >;
+      listAssets: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          blobId?: string;
+          contentType: string;
+          deploymentId: string;
+          path: string;
+          storageId?: string;
+        }>
+      >;
+      recordAsset: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          blobId?: string;
+          contentType: string;
+          deploymentId: string;
+          path: string;
+          storageId?: string;
+        },
+        { oldBlobId: string | null; oldStorageId: string | null }
+      >;
+      setCurrentDeployment: FunctionReference<
+        "mutation",
+        "internal",
+        { deploymentId: string },
+        null
       >;
     };
   };

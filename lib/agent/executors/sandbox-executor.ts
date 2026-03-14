@@ -23,6 +23,7 @@ import {
     isSandboxTool,
     type SandboxInstance,
 } from "../../sandbox";
+import type { Sandbox } from "@e2b/code-interpreter";
 
 // ---------------------------------------------------------------------------
 // Per-session sandbox state (isolated per task run)
@@ -33,6 +34,7 @@ interface SandboxSession {
     fileManager: FileSystemManager;
     terminalManager: TerminalManager;
     sandboxId: string;
+    sandbox: Sandbox;
 }
 
 interface DesktopSession {
@@ -212,6 +214,22 @@ export async function executeSandboxTool(
                 });
             }
 
+            // ------- Deploy / Port Exposure -------
+            case "sandbox_expose_port": {
+                const port = args.port as number;
+                const host = session.sandbox.getHost(port);
+                const publicUrl = `https://${host}`;
+                console.log(`[SandboxExecutor] Exposed port ${port} → ${publicUrl}`);
+                return JSON.stringify({
+                    success: true,
+                    action: "port_exposed",
+                    port,
+                    url: publicUrl,
+                    host,
+                    message: `Port ${port} is now accessible at ${publicUrl}. This URL is temporary and will expire when the sandbox shuts down.`,
+                });
+            }
+
             default:
                 return JSON.stringify({ error: `Unhandled sandbox tool: ${toolName}` });
         }
@@ -339,6 +357,7 @@ async function ensureSandboxConnection(sessionId: string): Promise<SandboxSessio
         fileManager: new FileSystemManager(instance.sandbox),
         terminalManager: new TerminalManager(instance.sandbox),
         sandboxId: instance.id,
+        sandbox: instance.sandbox,
     };
 
     sandboxSessions.set(sessionId, session);

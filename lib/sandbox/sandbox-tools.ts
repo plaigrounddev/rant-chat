@@ -134,6 +134,14 @@ export const sandboxDragSchema = z.object({
     endY: z.number().describe("End Y coordinate"),
 });
 
+export const sandboxExposePortSchema = z.object({
+    port: z
+        .number()
+        .describe(
+            "Local port number running in the sandbox to expose publicly (e.g., 3000, 5173, 8080)"
+        ),
+});
+
 // ---------------------------------------------------------------------------
 // Tool Definitions for Agent Registration
 // ---------------------------------------------------------------------------
@@ -142,7 +150,7 @@ export interface SandboxToolDefinition {
     name: string;
     description: string;
     schema: z.ZodType;
-    category: "code" | "file" | "terminal" | "desktop";
+    category: "code" | "file" | "terminal" | "desktop" | "deploy";
 }
 
 export const SANDBOX_TOOLS: SandboxToolDefinition[] = [
@@ -264,6 +272,15 @@ export const SANDBOX_TOOLS: SandboxToolDefinition[] = [
             "Drag from one position to another on the desktop. Use for drag-and-drop operations.",
         schema: sandboxDragSchema,
         category: "desktop",
+    },
+
+    // Deploy / Port Exposure
+    {
+        name: "sandbox_expose_port",
+        description:
+            "Expose a local port from the sandbox for temporary public access. Use this after starting a dev server (e.g., npm run dev on port 3000) to get a public URL that the user can view in the preview panel. Returns a public hostname URL.",
+        schema: sandboxExposePortSchema,
+        category: "deploy",
     },
 ];
 

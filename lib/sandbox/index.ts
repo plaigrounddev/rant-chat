@@ -67,4 +67,5 @@ export {
     sandboxPressKeySchema,
     sandboxScrollDesktopSchema,
     sandboxDragSchema,
+    sandboxExposePortSchema,
 } from "./sandbox-tools";
