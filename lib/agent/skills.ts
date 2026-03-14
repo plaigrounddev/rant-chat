@@ -21,6 +21,7 @@ import { scrapeUrl } from "./executors/web-scraper";
 import { makeHttpRequest } from "./executors/http-request";
 import { runCode } from "./executors/code-runner";
 import { perplexitySearch } from "./executors/perplexity-search";
+import { searchKnowledge } from "./executors/embedding-search";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -580,3 +581,58 @@ registerSkill({
         return `[Plan created] Goal: ${goal}\n\nSteps:\n${steps}\n\nProceed with step 1.`;
     },
 });
+
+// ── Knowledge Base Search — Gemini Embedding 2 + Convex RAG ─────────────
+
+registerSkill({
+    name: "search_knowledge",
+    description:
+        "Search the user's uploaded knowledge base for relevant content. This searches across ALL uploaded files — images, PDFs, videos, audio files, and text documents — using semantic similarity powered by Gemini Embedding 2. Use this to find information from previously uploaded files.",
+    category: "utilities",
+    toolDefinition: {
+        type: "function",
+        name: "search_knowledge",
+        description:
+            "Search the user's knowledge base (uploaded images, PDFs, videos, audio, text files) using semantic search. Returns relevant content with scores and metadata. Use when the user asks about content from their uploaded files.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description:
+                        "The search query — describe what you're looking for semantically. Can be a question, a topic, or a description of the content you need.",
+                },
+                namespace: {
+                    type: "string",
+                    description:
+                        "The namespace to search in (typically the user's ID). If not provided, defaults to 'global'.",
+                },
+                limit: {
+                    type: "number",
+                    description:
+                        "Maximum number of results to return (default: 10, max: 50)",
+                },
+                file_type: {
+                    type: "string",
+                    description:
+                        "Optional filter by file type: 'image', 'document', 'video', 'audio', or 'text'",
+                    enum: ["image", "document", "video", "audio", "text"],
+                },
+            },
+            required: ["query"],
+        },
+    },
+    executor: async (args) => {
+        const query = asNonEmptyString(args.query);
+        if (!query) return JSON.stringify({ error: "query must be a non-empty string" });
+
+        const namespace = typeof args.namespace === "string" && args.namespace.trim()
+            ? args.namespace
+            : "global";
+        const limit = typeof args.limit === "number" ? Math.min(args.limit, 50) : 10;
+        const fileType = typeof args.file_type === "string" ? args.file_type : undefined;
+
+        return searchKnowledge({ query, namespace, limit, fileType });
+    },
+});
+

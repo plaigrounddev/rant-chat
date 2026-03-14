@@ -109,4 +109,24 @@ export default defineSchema({
     })
         .index("by_user_pending", ["userId", "status", "priority"])
         .index("by_status", ["status", "priority"]),
+
+    // ── Embedded Files (multimodal RAG) ─────────────────────────────
+    embeddedFiles: defineTable({
+        userId: v.id("users"),
+        fileName: v.string(),
+        mimeType: v.string(),
+        storageId: v.string(),
+        entryId: v.optional(v.string()),   // RAG entry ID after embedding
+        status: v.union(
+            v.literal("pending"),
+            v.literal("embedding"),
+            v.literal("ready"),
+            v.literal("failed"),
+        ),
+        errorMessage: v.optional(v.string()),
+        dimensions: v.optional(v.number()),
+        createdAt: v.number(),
+    })
+        .index("by_user", ["userId", "createdAt"])
+        .index("by_status", ["status"]),
 });
