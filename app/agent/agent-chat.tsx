@@ -235,6 +235,7 @@ function ToolCallCard({
         run_code: <CodeIcon className="size-4" />,
         sandbox_execute_code: <CodeIcon className="size-4" />,
         sandbox_write_file: <CodeIcon className="size-4" />,
+        sandbox_read_file: <CodeIcon className="size-4" />,
         sandbox_run_command: <TerminalIcon className="size-4" />,
         read_memories: <MemoryStickIcon className="size-4" />,
         create_memory: <BrainIcon className="size-4" />,

@@ -102,17 +102,18 @@ export function BrowserPreviewCard({
                     </div>
                 )}
 
-                {/* Overlay controls (on hover) */}
+                {/* Overlay controls (on hover + keyboard focus) */}
                 <div
                     className={cn(
                         "absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent transition-opacity duration-200",
-                        isHovered ? "opacity-100" : "opacity-0"
+                        isHovered ? "opacity-100" : "opacity-0 group-focus-within/preview:opacity-100"
                     )}
                 >
                     {/* Top-right actions */}
                     <div className="absolute right-2 top-2 flex gap-1">
                         {onExpand && (
                             <button
+                                type="button"
                                 onClick={onExpand}
                                 className="flex size-7 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
                                 aria-label="Expand"
@@ -122,6 +123,7 @@ export function BrowserPreviewCard({
                         )}
                         {onDismiss && (
                             <button
+                                type="button"
                                 onClick={onDismiss}
                                 className="flex size-7 items-center justify-center rounded-lg bg-black/40 text-white/70 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
                                 aria-label="Close"
@@ -252,9 +254,13 @@ export function CodePreviewPanel({
     const handleCopy = useCallback(async () => {
         const codeToCopy = activeFile?.code || preview.code;
         if (codeToCopy) {
-            await navigator.clipboard.writeText(codeToCopy);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            try {
+                await navigator.clipboard.writeText(codeToCopy);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } catch (err) {
+                console.warn("[PreviewArtifact] Clipboard write failed:", err);
+            }
         }
     }, [activeFile, preview.code]);
 
@@ -264,16 +270,13 @@ export function CodePreviewPanel({
         }
     }, [preview.url]);
 
-    // Write HTML directly into iframe for live preview
-    useEffect(() => {
-        if (activeTab === "preview" && htmlContent && !preview.url && iframeRef.current) {
-            const doc = iframeRef.current.contentDocument;
-            if (doc) {
-                doc.open();
-                doc.write(htmlContent);
-                doc.close();
-            }
+    // Use srcDoc instead of document.write to avoid XSS sink
+    // and remove allow-same-origin from sandbox for better isolation
+    const iframeSrcDoc = useMemo(() => {
+        if (activeTab === "preview" && htmlContent && !preview.url) {
+            return htmlContent;
         }
+        return undefined;
     }, [activeTab, htmlContent, preview.url]);
 
     // Auto-select latest file when new files arrive
@@ -392,9 +395,10 @@ export function CodePreviewPanel({
                         ) : htmlContent ? (
                             <iframe
                                 ref={iframeRef}
+                                srcDoc={iframeSrcDoc}
                                 className="size-full border-0"
                                 title={preview.title || "Code Preview"}
-                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+                                sandbox="allow-scripts allow-forms allow-popups allow-presentation"
                             />
                         ) : (
                             <div className="flex size-full items-center justify-center bg-background">
