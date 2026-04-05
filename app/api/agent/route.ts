@@ -31,6 +31,14 @@ import {
 import { cleanupBrowserSession, getBrowserSessionLiveViewUrl } from "@/lib/agent/executors/browser-executor";
 import { cleanupSandboxSession } from "@/lib/agent/executors/sandbox-executor";
 import { isBrowserTool } from "@/lib/browser";
+import { AgentLifecycle, classifyFailure } from "@/lib/agent/lifecycle";
+import { createSessionEmitter, type AgentEventEmitter } from "@/lib/agent/events";
+import {
+    RecoveryContext,
+    classifyError,
+    attemptRecovery,
+    formatRecoveryMessage,
+} from "@/lib/agent/recovery";
 
 // Force skills registration on module load
 import "@/lib/agent/skills";
@@ -64,14 +72,16 @@ export async function POST(req: NextRequest) {
             { status: 400, headers: { "Content-Type": "application/json" } }
         );
     }
-    const { message, previousResponseId, templateSlug } = body as {
-        message: string;
+    const { message, image, previousResponseId, templateSlug } = body as {
+        message?: string;
+        image?: string | null;
         previousResponseId?: string;
         templateSlug?: string;
     };
 
-    if (!message?.trim()) {
-        return new Response(JSON.stringify({ error: "Message is required" }), {
+    const userMessage = message || "";
+    if (!userMessage.trim() && !image) {
+        return new Response(JSON.stringify({ error: "Message or image is required" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
         });
@@ -91,7 +101,7 @@ export async function POST(req: NextRequest) {
                 controller.close();
             }
 
-            void runAgentLoop(apiKey, message, previousResponseId, templateSlug, sendSSE, close).catch((err) => {
+            void runAgentLoop(apiKey, userMessage, image, previousResponseId, templateSlug, sendSSE, close).catch((err) => {
                 sendSSE("error", { code: "agent_error", message: String(err) });
                 close();
             });
@@ -113,6 +123,7 @@ export async function POST(req: NextRequest) {
 async function runAgentLoop(
     apiKey: string,
     userMessage: string,
+    image: string | null | undefined,
     previousResponseId: string | undefined,
     templateSlug: string | undefined,
     sendSSE: (event: string, data: unknown) => void,
@@ -120,6 +131,22 @@ async function runAgentLoop(
 ) {
     let ws: WebSocket | null = null;
     const customTools = getCustomTools();
+
+    // ── Claw-code patterns: lifecycle, events, recovery ──────────
+    const lifecycle = new AgentLifecycle();
+    const events = createSessionEmitter();
+    const recoveryCtx = new RecoveryContext();
+    lifecycle.markInitializing();
+
+    // Stream lifecycle & events to SSE
+    lifecycle.onEvent((evt) => {
+        sendSSE("agent_lifecycle", evt);
+    });
+    events.on((evt) => {
+        if (evt.severity !== "debug") {
+            sendSSE("agent_event", evt);
+        }
+    });
 
     // Get Composio tools (1000+ integrations) if configured
     const composioTools = await getComposioTools();
@@ -132,6 +159,7 @@ async function runAgentLoop(
     if (composioTools.length > 0) {
         // Fetch toolkit logos from session.toolkits() → meta.logo
         const toolkitLogos = await getToolkitLogos();
+        events.composioToolsLoaded(composioTools.length);
         sendSSE("composio_ready", { toolCount: composioTools.length, toolkitLogos });
     }
 
@@ -143,6 +171,8 @@ async function runAgentLoop(
         composioEnabled: isComposioEnabled(),
         ...(template?.config || {}),
     });
+
+    lifecycle.markReady();
 
     try {
         ws = new WebSocket(OPENAI_WS_URL, {
@@ -157,6 +187,7 @@ async function runAgentLoop(
         let hasUsedAnyTool = false;
         let continuationRounds = 0;
 
+        events.sessionStarted(MODEL, customTools.length + composioTools.length);
         console.log(`[AGENT] ▶ New run | model=${MODEL} | maxRounds=${MAX_TOOL_ROUNDS}`);
 
         // Track function calls being streamed
@@ -164,10 +195,12 @@ async function runAgentLoop(
 
         conn.on("open", () => {
             sendSSE("status", { type: "connected" });
+            lifecycle.markThinking();
 
             // Build the initial request with intent-filtered tool suite
             // Classify user intent and only expose relevant tools (Lindy Pattern #9)
             const agentTools = [...getFilteredAgentTools(userMessage), ...composioTools];
+            events.agentToolRouting(customTools.length + composioTools.length, agentTools.length);
             const request: Record<string, unknown> = {
                 type: "response.create",
                 model: MODEL,
@@ -177,7 +210,12 @@ async function runAgentLoop(
                     {
                         type: "message",
                         role: "user",
-                        content: [{ type: "input_text", text: userMessage }],
+                        content: image
+                            ? [
+                                { type: "input_text", text: userMessage || "Review this attached image." },
+                                { type: "input_image", image_url: { url: image } }
+                            ]
+                            : [{ type: "input_text", text: userMessage }],
                     },
                 ],
             };
@@ -312,6 +350,7 @@ async function runAgentLoop(
                             hasUsedAnyTool = true;
                             taskStore.incrementToolRound(taskRun.id);
                             console.log(`[AGENT] 🔧 Tool round ${toolRound} | ${functionCallOutputs.length} tool(s): ${functionCallOutputs.map((fc: { name: string }) => fc.name).join(', ')}`);
+                            events.modelRoundCompleted(toolRound, functionCallOutputs.length);
                             sendSSE("status", {
                                 type: "executing_tools",
                                 round: toolRound,
@@ -333,9 +372,48 @@ async function runAgentLoop(
                                         }
 
                                         // Route to Composio or our custom skills
-                                        const result = isComposioTool(fc.name)
-                                            ? await executeComposioTool(fc.name, args, fc.call_id)
-                                            : await executeTool(fc.name, args, taskRun.id);
+                                        // Wrap with lifecycle tracking + recovery
+                                        lifecycle.markToolStarted(fc.name);
+                                        events.toolStarted(fc.name, toolRound);
+                                        const toolStartTime = Date.now();
+                                        let result: string;
+                                        try {
+                                            result = isComposioTool(fc.name)
+                                                ? await executeComposioTool(fc.name, args, fc.call_id)
+                                                : await executeTool(fc.name, args, taskRun.id);
+                                            const elapsed = Date.now() - toolStartTime;
+                                            lifecycle.markToolCompleted(fc.name, elapsed);
+                                            events.toolCompleted(fc.name, elapsed, result?.slice?.(0, 100));
+                                        } catch (toolError) {
+                                            const failureClass = classifyFailure(toolError);
+                                            lifecycle.markToolFailed(fc.name, String(toolError), failureClass);
+                                            events.toolFailed(fc.name, String(toolError), failureClass);
+
+                                            // Attempt auto-recovery
+                                            const scenario = classifyError(toolError, { toolName: fc.name });
+                                            if (scenario) {
+                                                lifecycle.markRecovering(scenario);
+                                                events.recoveryStarted(scenario);
+                                                const recovery = await attemptRecovery(scenario, recoveryCtx);
+                                                lifecycle.markRecoveryCompleted(scenario, recovery.status === "recovered");
+                                                if (recovery.status === "recovered") {
+                                                    events.recoverySucceeded(scenario, recovery.stepsTaken);
+                                                    // Retry the tool call after recovery
+                                                    try {
+                                                        result = isComposioTool(fc.name)
+                                                            ? await executeComposioTool(fc.name, args, fc.call_id)
+                                                            : await executeTool(fc.name, args, taskRun.id);
+                                                    } catch {
+                                                        result = formatRecoveryMessage(scenario, recovery);
+                                                    }
+                                                } else {
+                                                    events.recoveryFailed(scenario, recovery.status === "escalation_required" ? recovery.reason : "partial failure");
+                                                    result = formatRecoveryMessage(scenario, recovery);
+                                                }
+                                            } else {
+                                                result = `Tool ${fc.name} failed: ${String(toolError)}`;
+                                            }
+                                        }
 
                                         // Log tool result to task store
                                         const existingStep = taskRun.steps.find(
@@ -521,6 +599,8 @@ async function runAgentLoop(
                             if (isExplicitDone || isSimpleQA) {
                                 // Genuine completion — task is done
                                 console.log(`[AGENT] ✅ Complete | reason=${isExplicitDone ? 'TASK_COMPLETE' : 'simple_qa'} | toolRounds=${toolRound} | continuations=${continuationRounds}`);
+                                lifecycle.markCompleted(`${toolRound} rounds, ${lifecycle.getTotalToolCalls()} tool calls`);
+                                events.sessionCompleted(toolRound, lifecycle.getTotalToolCalls(), Date.now() - Date.parse(taskRun.startedAt));
                                 taskStore.completeRun(taskRun.id, "completed");
                                 sendSSE("task_completed", {
                                     taskId: taskRun.id,
@@ -577,6 +657,9 @@ async function runAgentLoop(
 
                     // ── Errors ─────────────────────────────────────────────
                     case "error":
+                        lifecycle.markFailed(event.error?.message || "Unknown error",
+                            classifyFailure(event.error?.message, { statusCode: event.error?.code === "rate_limit_exceeded" ? 429 : undefined }));
+                        events.sessionFailed(event.error?.message || "Unknown error");
                         taskStore.completeRun(
                             taskRun.id,
                             "error",
@@ -594,6 +677,8 @@ async function runAgentLoop(
                         break;
 
                     case "rate_limit_exceeded":
+                        lifecycle.markFailed("Rate limit exceeded", "rate_limit");
+                        events.sessionFailed("Rate limit exceeded", "rate_limit");
                         taskStore.completeRun(
                             taskRun.id,
                             "error",
@@ -621,6 +706,8 @@ async function runAgentLoop(
 
         conn.on("error", (err: Error) => {
             console.error("WebSocket error:", err);
+            lifecycle.markFailed(err.message, classifyFailure(err));
+            events.sessionFailed(err.message);
             taskStore.completeRun(taskRun.id, "error", err.message);
             sendSSE("error", {
                 code: "ws_error",
@@ -637,6 +724,8 @@ async function runAgentLoop(
         });
     } catch (err) {
         console.error("Agent loop error:", err);
+        lifecycle.markFailed("Failed to start agent", classifyFailure(err));
+        events.sessionFailed("Failed to start agent");
         taskStore.completeRun(taskRun.id, "error", "Failed to start agent");
         sendSSE("error", {
             code: "agent_error",
