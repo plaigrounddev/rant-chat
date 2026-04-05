@@ -760,11 +760,6 @@ registerSkill({
                     description:
                         "The search query — describe what you're looking for semantically. Can be a question, a topic, or a description of the content you need.",
                 },
-                namespace: {
-                    type: "string",
-                    description:
-                        "The namespace to search in (required — typically the user's ID or a project-scoped key).",
-                },
                 limit: {
                     type: "number",
                     description:
@@ -777,27 +772,19 @@ registerSkill({
                     enum: ["image", "document", "video", "audio", "text"],
                 },
             },
-            required: ["query", "namespace"],
+            required: ["query"],
         },
     },
     executor: async (args) => {
         const query = asNonEmptyString(args.query);
         if (!query) return JSON.stringify({ error: "query must be a non-empty string" });
 
-        const namespace = typeof args.namespace === "string" && args.namespace.trim()
-            ? args.namespace
-            : undefined;
-        if (!namespace) {
-            return JSON.stringify({
-                error: "namespace is required — provide the user's ID or a project-scoped namespace",
-            });
-        }
         const limit = typeof args.limit === "number" && args.limit > 0
             ? Math.min(args.limit, 50)
             : 10;
         const fileType = typeof args.file_type === "string" ? args.file_type : undefined;
 
-        return searchKnowledge({ query, namespace, limit, fileType });
+        return searchKnowledge({ query, limit, fileType });
     },
 });
 
@@ -1185,3 +1172,5 @@ registerSkill({
         });
     },
 });
+
+// search_knowledge is already registered above (line ~745) — do not duplicate

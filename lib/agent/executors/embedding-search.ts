@@ -25,16 +25,24 @@ interface SearchResult {
     usage: { tokens: number };
 }
 
+import { auth } from "@clerk/nextjs/server";
+
 /**
  * Search embedded knowledge base via Convex RAG
  */
 export async function searchKnowledge(args: {
     query: string;
-    namespace: string;
     limit?: number;
     fileType?: string;
 }): Promise<string> {
     try {
+        const { userId } = await auth();
+        const namespace = userId;
+
+        if (!namespace) {
+            return JSON.stringify({ error: "Unauthorized: No user session found" });
+        }
+
         if (!CONVEX_URL) {
             return JSON.stringify({ error: "Convex URL not configured" });
         }
@@ -52,7 +60,7 @@ export async function searchKnowledge(args: {
                 path: "embeddings:search",
                 args: {
                     query: args.query,
-                    namespace: args.namespace,
+                    namespace: namespace,
                     limit: args.limit ?? 10,
                     ...(args.fileType ? { fileType: args.fileType } : {}),
                 },
