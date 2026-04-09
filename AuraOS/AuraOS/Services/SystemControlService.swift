@@ -209,30 +209,42 @@ final class SystemControlService {
             return "❌ No contact name provided. Say \"Call [name]\" to make a call."
         }
 
-        // For MVP, open the phone dialer. Full contact lookup requires async CNContactStore query.
-        // Simple approach: try to open tel:// URL with the name (iOS will search contacts)
-        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        if let url = URL(string: "tel://\(encoded)") {
-            UIApplication.shared.open(url)
-            return "📞 Initiating call to \(name)..."
-        }
+        // Resolve contact name to phone number via CNContactStore
+        let store = CNContactStore()
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+        ]
+        let predicate = CNContact.predicateForContacts(matchingName: name)
 
-        return "❌ Could not initiate call to \(name)"
+        do {
+            let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keysToFetch)
+            guard let contact = contacts.first,
+                  let phoneNumber = contact.phoneNumbers.first?.value.stringValue else {
+                return "❌ No phone number found for \"\(name)\""
+            }
+
+            // Sanitize phone number: keep digits and leading +
+            let sanitized = phoneNumber.filter { $0.isNumber || $0 == "+" }
+            guard let url = URL(string: "tel://\(sanitized)") else {
+                return "❌ Invalid phone number for \(name)"
+            }
+
+            UIApplication.shared.open(url)
+            let fullName = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
+            return "📞 Calling \(fullName)..."
+        } catch {
+            return "❌ Could not look up contact: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Do Not Disturb
 
     private func toggleDoNotDisturb() -> String {
-        // Note: Direct DND toggle is restricted on iOS.
-        // Best approach: Open Focus settings for the user
-        // or use Shortcuts integration (INSetFocusModeSettingsIntent is deprecated)
-        if let url = URL(string: "App-prefs:DO_NOT_DISTURB") {
-            DispatchQueue.main.async {
-                UIApplication.shared.open(url)
-            }
-            return "🔕 Opening Do Not Disturb settings..."
-        }
-        return "🔕 Please toggle Do Not Disturb from Control Center (swipe down)"
+        // No public API exists to toggle Focus/DND programmatically on iOS.
+        // Direct the user to Control Center instead.
+        return "🔕 Please toggle Do Not Disturb from Control Center (swipe down from the top-right corner)"
     }
 
     // MARK: - Camera
@@ -259,8 +271,11 @@ final class SystemControlService {
 
     @MainActor
     private func openURL(_ urlString: String?) async -> String {
-        guard let urlString, let url = URL(string: urlString) else {
-            return "❌ No valid URL provided"
+        guard let urlString,
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              ["https", "http"].contains(scheme) else {
+            return "❌ No valid URL provided (only http/https URLs are supported)"
         }
 
         UIApplication.shared.open(url)
@@ -299,9 +314,7 @@ final class SystemControlService {
 
             let results = contacts.prefix(5).map { contact in
                 let fullName = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
-                let phone = contact.phoneNumbers.first?.value.stringValue ?? "no phone"
-                let email = contact.emailAddresses.first?.value as String? ?? "no email"
-                return "• \(fullName) — \(phone) — \(email)"
+                return "• \(fullName)"
             }.joined(separator: "\n")
 
             return "👤 Contacts matching \"\(name)\":\n\(results)"

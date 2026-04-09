@@ -131,16 +131,16 @@ final class IntentParser {
                 entities: .init(reminderText: transcription)
             )
         }
-        if lower.contains("create event") || lower.contains("add to calendar") || lower.contains("schedule") {
+        if lower.contains("what's on my calendar") || lower.contains("read my calendar") || lower.contains("what do i have today") || lower.contains("what's my schedule") || lower.contains("my schedule") {
+            return makeIntent(category: .query, command: .readCalendar, confidence: 0.85)
+        }
+        if lower.contains("create event") || lower.contains("add to calendar") || lower.contains("schedule a") || lower.contains("schedule meeting") {
             return makeIntent(
                 category: .task,
                 command: .createEvent,
                 confidence: 0.8,
                 entities: .init(eventTitle: transcription)
             )
-        }
-        if lower.contains("what's on my calendar") || lower.contains("read my calendar") || lower.contains("what do i have today") {
-            return makeIntent(category: .query, command: .readCalendar, confidence: 0.85)
         }
         if lower.contains("call ") {
             let contactName = extractAfterKeyword(lower, keyword: "call")
@@ -158,10 +158,22 @@ final class IntentParser {
             return makeIntent(category: .note, command: .takePhoto, confidence: 0.9)
         }
         if lower.contains("brightness") {
-            return makeIntent(category: .note, command: .setBrightness, confidence: 0.7)
+            let level = extractPercentage(from: lower)
+            return makeIntent(
+                category: .note,
+                command: .setBrightness,
+                confidence: 0.7,
+                entities: .init(brightnessLevel: level)
+            )
         }
         if lower.contains("volume") {
-            return makeIntent(category: .note, command: .setVolume, confidence: 0.7)
+            let level = extractPercentage(from: lower)
+            return makeIntent(
+                category: .note,
+                command: .setVolume,
+                confidence: 0.7,
+                entities: .init(volumeLevel: level)
+            )
         }
 
         // Intent categories (non-system-command)
@@ -227,6 +239,22 @@ final class IntentParser {
         guard let range = text.range(of: keyword) else { return nil }
         let after = text[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         return after.isEmpty ? nil : after
+    }
+
+    private func extractPercentage(from text: String) -> Double? {
+        // Match patterns like "50%", "50 percent", or bare numbers after "to"
+        let percentPattern = /(\d{1,3})\s*(%|percent)/
+        if let match = text.firstMatch(of: percentPattern) {
+            let value = Double(String(match.1)) ?? 0
+            return min(max(value / 100.0, 0), 1.0)
+        }
+        // Match "to X" pattern (e.g., "set brightness to 50")
+        let toPattern = /to\s+(\d{1,3})/
+        if let match = text.firstMatch(of: toPattern) {
+            let value = Double(String(match.1)) ?? 0
+            return min(max(value / 100.0, 0), 1.0)
+        }
+        return nil
     }
 }
 
