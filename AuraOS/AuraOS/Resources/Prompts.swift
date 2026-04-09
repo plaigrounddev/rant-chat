@@ -125,7 +125,8 @@ enum Prompts {
     /// Replace {placeholder} variables in a template string
     static func render(_ template: String, variables: [String: String]) -> String {
         var result = template
-        for (key, value) in variables {
+        for key in variables.keys.sorted() {
+            let value = variables[key] ?? ""
             result = result.replacingOccurrences(of: "{\(key)}", with: value)
         }
         return result

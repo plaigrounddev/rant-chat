@@ -73,7 +73,7 @@ final class PermissionManager: NSObject {
         /// Whether this permission is required for core functionality
         var isRequired: Bool {
             switch self {
-            case .microphone, .speechRecognition: return true
+            case .microphone: return true
             default: return false
             }
         }

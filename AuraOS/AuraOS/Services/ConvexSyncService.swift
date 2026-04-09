@@ -175,11 +175,12 @@ final class ConvexSyncService {
 
     @discardableResult
     private func callConvex(endpoint: String, path: String, args: [String: Any]) async throws -> Any? {
-        guard !convexURL.isEmpty else {
+        guard
+            let baseURL = URL(string: convexURL),
+            let url = URL(string: "api/\(endpoint)", relativeTo: baseURL)
+        else {
             throw ConvexSyncError.notConfigured
         }
-
-        let url = URL(string: "\(convexURL)/api/\(endpoint)")!
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

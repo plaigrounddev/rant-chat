@@ -455,10 +455,12 @@ final class MemPalaceDatabase {
 
     /// Decode Data (BLOB) back to Float array
     private func decodeFloatArray(_ data: Data) -> [Float] {
-        return data.withUnsafeBytes { rawBuffer in
-            let buffer = rawBuffer.bindMemory(to: Float.self)
-            return Array(buffer)
-        }
+        var floats = Array(
+            repeating: Float.zero,
+            count: data.count / MemoryLayout<Float>.stride
+        )
+        _ = floats.withUnsafeMutableBytes { data.copyBytes(to: $0) }
+        return floats
     }
 
     /// Cosine similarity between two float vectors

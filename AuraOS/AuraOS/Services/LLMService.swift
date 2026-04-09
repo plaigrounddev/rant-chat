@@ -84,6 +84,7 @@ final class LLMService {
                 ctxParams.n_batch = UInt32(self.config.batchSize)
                 ctxParams.n_threads = UInt32(self.config.threads)
                 ctxParams.n_threads_batch = UInt32(self.config.threads)
+                ctxParams.embeddings = true
 
                 guard let ctx = llama_init_from_model(loadedModel, ctxParams) else {
                     llama_model_free(loadedModel)
