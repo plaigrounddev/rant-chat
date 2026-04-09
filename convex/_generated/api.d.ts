@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aura from "../aura.js";
 import type * as automations from "../automations.js";
 import type * as crons from "../crons.js";
 import type * as embeddedFiles from "../embeddedFiles.js";
@@ -28,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aura: typeof aura;
   automations: typeof automations;
   crons: typeof crons;
   embeddedFiles: typeof embeddedFiles;
