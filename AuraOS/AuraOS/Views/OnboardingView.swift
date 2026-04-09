@@ -324,8 +324,8 @@ struct OnboardingView: View {
                     if WhisperService.isWhisperModelDownloaded {
                         try? await WhisperService.shared.loadModel(path: WhisperService.whisperModelPath.path)
                     }
-                    // Mark setup as complete
-                    modelManager.checkModelsReady()
+                    // Mark onboarding as complete (even if models were skipped)
+                    modelManager.markOnboardingComplete()
                 }
             } label: {
                 Text("Start Using AuraOS")

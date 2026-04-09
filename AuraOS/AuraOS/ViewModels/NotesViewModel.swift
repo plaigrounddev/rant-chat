@@ -18,6 +18,7 @@ final class NotesViewModel {
     // MARK: - Private
 
     private let memPalace = MemPalaceManager.shared
+    private var searchToken: Int = 0
 
     // MARK: - Load
 
@@ -45,8 +46,11 @@ final class NotesViewModel {
 
     func search(query: String) async {
         searchQuery = query
+        searchToken &+= 1
+        let token = searchToken
 
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            isSearching = false
             loadNotes()
             return
         }
@@ -57,6 +61,8 @@ final class NotesViewModel {
             category: selectedCategory
         )
 
+        // Only apply results if this is still the latest search
+        guard token == searchToken else { return }
         filteredNotes = results
         isSearching = false
     }

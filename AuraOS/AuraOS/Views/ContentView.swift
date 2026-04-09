@@ -8,25 +8,25 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("Home", systemImage: "waveform.circle.fill", value: .home) {
-                HomeView()
-            }
+            HomeView()
+                .tabItem { Label("Home", systemImage: "waveform.circle.fill") }
+                .tag(AppTab.home)
 
-            Tab("Notes", systemImage: "note.text", value: .notes) {
-                NotesView()
-            }
+            NotesView()
+                .tabItem { Label("Notes", systemImage: "note.text") }
+                .tag(AppTab.notes)
 
-            Tab("Memory", systemImage: "brain.head.profile", value: .memory) {
-                MemoryView()
-            }
+            MemoryView()
+                .tabItem { Label("Memory", systemImage: "brain.head.profile") }
+                .tag(AppTab.memory)
 
-            Tab("Actions", systemImage: "bolt.fill", value: .actions) {
-                ActionsView()
-            }
+            ActionsView()
+                .tabItem { Label("Actions", systemImage: "bolt.fill") }
+                .tag(AppTab.actions)
 
-            Tab("Settings", systemImage: "gearshape.fill", value: .settings) {
-                SettingsView()
-            }
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                .tag(AppTab.settings)
         }
         .tint(.accentColor)
     }

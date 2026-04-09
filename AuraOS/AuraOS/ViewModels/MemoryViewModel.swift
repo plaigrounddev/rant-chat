@@ -5,6 +5,7 @@ import Observation
 
 /// Manages memory search, listing, and CRUD operations.
 @Observable
+@MainActor
 final class MemoryViewModel {
 
     // MARK: - State

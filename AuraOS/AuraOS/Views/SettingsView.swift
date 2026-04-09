@@ -229,8 +229,14 @@ struct SettingsView: View {
                 titleVisibility: .visible
             ) {
                 Button("Clear Everything", role: .destructive) {
-                    // Delete database and reset
-                    // Implementation: delete SQLite file and reinitialize
+                    // Delete the SQLite database file and reset state
+                    let documentsPath = NSSearchPathForDirectoriesInDomains(
+                        .documentDirectory, .userDomainMask, true
+                    ).first!
+                    let dbPath = "\(documentsPath)/mempalace.sqlite3"
+                    try? FileManager.default.removeItem(atPath: dbPath)
+                    // Reset in-memory state
+                    MemPalaceManager.shared.refreshStats()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

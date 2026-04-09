@@ -149,6 +149,11 @@ final class ModelDownloadManager: NSObject {
         updateOverallProgress()
     }
 
+    /// Mark onboarding as complete, even if models were skipped
+    func markOnboardingComplete() {
+        isReady = true
+    }
+
     /// Get total download size for all missing models
     var totalDownloadSizeBytes: Int64 {
         Self.allModels.reduce(0) { total, model in
