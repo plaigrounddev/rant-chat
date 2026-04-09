@@ -46,7 +46,7 @@ export const auraNotes = defineTable({
     content: v.string(),           // AI-parsed/cleaned content
     tags: v.array(v.string()),     // Auto-generated tags
     timestamp: v.number(),         // Original creation time
-    contextLocation: v.string(),   // GPS or place name context
+    contextLocation: v.optional(v.string()),   // GPS or place name context (optional)
     createdAt: v.number(),
     updatedAt: v.number(),
 }).index("by_device_id", ["deviceId"])

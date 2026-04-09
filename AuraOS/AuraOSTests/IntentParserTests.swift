@@ -5,6 +5,12 @@ final class IntentParserTests: XCTestCase {
 
     let parser = IntentParser.shared
 
+    override func setUp() {
+        super.setUp()
+        // Ensure LLM is not loaded so tests use rule-based parsing deterministically
+        LLMService.shared.unloadModel()
+    }
+
     // MARK: - System Command Tests (Rule-Based)
 
     func testFlashlightOn() async {
@@ -107,6 +113,7 @@ final class IntentParserTests: XCTestCase {
     func testVeryLongTranscription() async {
         let longText = String(repeating: "This is a very long transcription. ", count: 100)
         let intent = await parser.parse(transcription: longText)
-        XCTAssertNotNil(intent.category)
+        XCTAssertEqual(intent.category, .note)  // Long text defaults to note category
+        XCTAssertEqual(intent.command, .none)
     }
 }

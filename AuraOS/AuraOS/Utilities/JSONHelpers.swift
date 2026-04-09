@@ -23,18 +23,20 @@ enum JSONHelpers {
 
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Find the first { and last } for object extraction
-        guard let startIdx = cleaned.firstIndex(of: "{"),
-              let endIdx = cleaned.lastIndex(of: "}") else {
-            // Try array extraction
-            if let arrStart = cleaned.firstIndex(of: "["),
-               let arrEnd = cleaned.lastIndex(of: "]") {
-                return String(cleaned[arrStart...arrEnd])
-            }
+        // Detect the outermost JSON container (object or array)
+        let objectStart = cleaned.firstIndex(of: "{")
+        let arrayStart = cleaned.firstIndex(of: "[")
+
+        switch (objectStart, arrayStart) {
+        case let (_, array?) where objectStart == nil || array < objectStart!:
+            guard let end = cleaned.lastIndex(of: "]") else { return nil }
+            return String(cleaned[array...end])
+        case let (object?, _):
+            guard let end = cleaned.lastIndex(of: "}") else { return nil }
+            return String(cleaned[object...end])
+        default:
             return nil
         }
-
-        return String(cleaned[startIdx...endIdx])
     }
 
     /// Safely decode JSON from an LLM response

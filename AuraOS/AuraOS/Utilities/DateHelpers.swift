@@ -131,20 +131,20 @@ enum DateHelpers {
         let calendar = Calendar.current
 
         // Extract number
-        let numberPattern = /in\s+(\d+)\s+(minute|min|hour|hr|day|week)/
+        let numberPattern = /in\s+(\d+)\s+(minutes?|mins?|hours?|hrs?|days?|weeks?)/
         guard let match = input.firstMatch(of: numberPattern) else { return nil }
 
         let amount = Int(match.1) ?? 1
         let unit = String(match.2)
 
         switch unit {
-        case "minute", "min":
+        case "minute", "minutes", "min", "mins":
             return calendar.date(byAdding: .minute, value: amount, to: now)
-        case "hour", "hr":
+        case "hour", "hours", "hr", "hrs":
             return calendar.date(byAdding: .hour, value: amount, to: now)
-        case "day":
+        case "day", "days":
             return calendar.date(byAdding: .day, value: amount, to: now)
-        case "week":
+        case "week", "weeks":
             return calendar.date(byAdding: .weekOfYear, value: amount, to: now)
         default:
             return nil
@@ -196,7 +196,8 @@ enum DateHelpers {
                 // Find the next occurrence of this weekday
                 var date = now
                 for _ in 0..<7 {
-                    date = calendar.date(byAdding: .day, value: 1, to: date)!
+                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { continue }
+                    date = nextDate
                     if calendar.component(.weekday, from: date) == weekday {
                         // Default to 9 AM
                         return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date)
@@ -209,7 +210,8 @@ enum DateHelpers {
         if input.contains("week") {
             var date = now
             for _ in 0..<7 {
-                date = calendar.date(byAdding: .day, value: 1, to: date)!
+                guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { continue }
+                date = nextDate
                 if calendar.component(.weekday, from: date) == 2 { // Monday
                     return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date)
                 }
@@ -220,15 +222,17 @@ enum DateHelpers {
     }
 
     private static func parseTimeOnly(_ input: String, on date: Date) -> Date? {
-        let timePattern = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/
+        let timePattern = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
         guard let match = input.firstMatch(of: timePattern) else { return nil }
 
         var hour = Int(match.1) ?? 0
         let minute = Int(match.2 ?? "0") ?? 0
-        let period = String(match.3)
+        let period = match.3.map { String($0) }
 
-        if period == "pm" && hour < 12 { hour += 12 }
-        if period == "am" && hour == 12 { hour = 0 }
+        if let period {
+            if period == "pm" && hour < 12 { hour += 12 }
+            if period == "am" && hour == 12 { hour = 0 }
+        }
 
         let calendar = Calendar.current
         var result = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date

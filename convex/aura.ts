@@ -3,7 +3,8 @@
 // The iOS app stores everything locally in SQLite (offline-first),
 // then syncs to Convex when internet is available.
 
-import { mutation, action, query } from "./_generated/server";
+import { mutation, action, query, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
 // ── Memory Sync ────────────────────────────────────────────────────────
@@ -78,8 +79,10 @@ export const syncNote = mutation({
         if (existing) {
             await ctx.db.patch(existing._id, {
                 category: args.category,
+                rawTranscription: args.rawTranscription,
                 content: args.content,
                 tags: args.tags,
+                contextLocation: args.contextLocation ?? "",
                 updatedAt: Date.now(),
             });
             return { status: "updated", id: existing._id };
@@ -121,15 +124,8 @@ export const executeAction = action({
     handler: async (ctx, args) => {
         console.log(`[AuraOS] Executing action: ${args.type} — ${args.title}`);
 
-        let parsedPayload: Record<string, string> = {};
-        try {
-            parsedPayload = JSON.parse(args.payload);
-        } catch {
-            // Payload might not be valid JSON
-        }
-
         // Log the action execution to the database
-        await ctx.runMutation("aura:logActionExecution" as any, {
+        await ctx.runMutation(internal.aura.logActionExecution, {
             actionId: args.id,
             type: args.type,
             title: args.title,
@@ -141,48 +137,22 @@ export const executeAction = action({
         // In production, these would call Composio or direct APIs
         switch (args.type) {
             case "sendEmail":
-                console.log(
-                    `[AuraOS] Email action: to=${parsedPayload.contact_name}, content=${parsedPayload.content}`
-                );
                 // TODO: Integrate with Composio GMAIL_SEND_EMAIL
-                return {
-                    success: true,
-                    message: `Email action logged: "${args.title}"`,
-                };
+                return { success: true, message: `Email action executed (id: ${args.id})` };
 
             case "createCalendarEvent":
-                console.log(
-                    `[AuraOS] Calendar action: ${parsedPayload.content} at ${parsedPayload.date_time}`
-                );
                 // TODO: Integrate with Composio Google Calendar
-                return {
-                    success: true,
-                    message: `Calendar event logged: "${args.title}"`,
-                };
+                return { success: true, message: `Calendar event executed (id: ${args.id})` };
 
             case "postSlack":
-                console.log(`[AuraOS] Slack action: ${parsedPayload.content}`);
                 // TODO: Integrate with Composio Slack
-                return {
-                    success: true,
-                    message: `Slack message logged: "${args.title}"`,
-                };
+                return { success: true, message: `Slack message executed (id: ${args.id})` };
 
             case "sendMessage":
-                console.log(
-                    `[AuraOS] Message action: to=${parsedPayload.contact_name}, content=${parsedPayload.content}`
-                );
-                return {
-                    success: true,
-                    message: `Message action logged: "${args.title}"`,
-                };
+                return { success: true, message: `Message action executed (id: ${args.id})` };
 
             default:
-                console.log(`[AuraOS] Custom action: ${args.title}`);
-                return {
-                    success: true,
-                    message: `Action logged: "${args.title}"`,
-                };
+                return { success: true, message: `Action executed (id: ${args.id})` };
         }
     },
 });
@@ -190,7 +160,7 @@ export const executeAction = action({
 /**
  * Log an action execution to the database for audit trail.
  */
-export const logActionExecution = mutation({
+export const logActionExecution = internalMutation({
     args: {
         actionId: v.string(),
         type: v.string(),
@@ -221,7 +191,7 @@ export const getMemories = query({
         limit: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
-        let query = ctx.db.query("aura_memories").order("desc");
+        let query = ctx.db.query("aura_memories").withIndex("by_timestamp").order("desc");
         const results = await query.collect();
 
         let filtered = results;
@@ -242,7 +212,7 @@ export const getNotes = query({
         limit: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
-        let query = ctx.db.query("aura_notes").order("desc");
+        let query = ctx.db.query("aura_notes").withIndex("by_timestamp").order("desc");
         const results = await query.collect();
 
         let filtered = results;

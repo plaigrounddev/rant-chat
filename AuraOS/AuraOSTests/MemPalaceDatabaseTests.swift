@@ -4,16 +4,20 @@ import XCTest
 final class MemPalaceDatabaseTests: XCTestCase {
 
     var database: MemPalaceDatabase!
+    var tempPath: String!
 
     override func setUp() {
         super.setUp()
-        // Use in-memory database for tests
-        let tempPath = NSTemporaryDirectory() + "test_mempalace_\(UUID().uuidString).sqlite3"
+        tempPath = NSTemporaryDirectory() + "test_mempalace_\(UUID().uuidString).sqlite3"
         database = MemPalaceDatabase(path: tempPath)
     }
 
     override func tearDown() {
         database = nil
+        if let tempPath {
+            try? FileManager.default.removeItem(atPath: tempPath)
+        }
+        tempPath = nil
         super.tearDown()
     }
 

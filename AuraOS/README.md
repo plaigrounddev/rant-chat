@@ -8,7 +8,7 @@ A native iOS app that acts as a personal AI OS layer — fully functional offlin
 
 ## Architecture
 
-```
+```text
 ┌────────────────────── AuraOS (iOS) ──────────────────────┐
 │                                                          │
 │  ┌─ Voice Pipeline ──────────────────────────────────┐   │
@@ -175,7 +175,7 @@ If you want online agent mode with cloud sync:
 
 ## Project Structure
 
-```
+```text
 AuraOS/
 ├── Package.swift              # SPM dependencies
 ├── AuraOS/

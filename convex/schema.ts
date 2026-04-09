@@ -1,6 +1,7 @@
 // convex/schema.ts
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { auraMemories, auraNotes, auraActions } from "./auraSchema";
 
 export default defineSchema({
     // ── Users (synced from Clerk) ───────────────────────────────────────
@@ -165,4 +166,9 @@ export default defineSchema({
         createdAt: v.number(),
     })
         .index("by_type", ["automationType", "createdAt"]),
+
+    // ── AuraOS (iOS sync) ─────────────────────────────────────────────
+    aura_memories: auraMemories,
+    aura_notes: auraNotes,
+    aura_actions: auraActions,
 });
