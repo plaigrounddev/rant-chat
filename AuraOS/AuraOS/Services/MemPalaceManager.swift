@@ -70,12 +70,21 @@ final class MemPalaceManager {
                let queryEmbedding = await LLMService.shared.getEmbedding(text: query) {
                 let vectorResults = try database.searchMemoriesByEmbedding(queryEmbedding, limit: limit)
                 if !vectorResults.isEmpty {
-                    return vectorResults.map { $0.0 }
+                    var results = vectorResults.map { $0.0 }
+                    // Apply type filter if specified
+                    if let type {
+                        results = results.filter { $0.type == type }
+                    }
+                    return results
                 }
             }
 
-            // Fallback to text search
-            return try database.searchMemories(query: query, limit: limit)
+            // Fallback to text search (also respects type filter)
+            let textResults = try database.searchMemories(query: query, limit: limit)
+            if let type {
+                return textResults.filter { $0.type == type }
+            }
+            return textResults
         } catch {
             print("[MemPalace] Recall failed: \(error)")
             return []
@@ -142,11 +151,16 @@ final class MemPalaceManager {
                let queryEmbedding = await LLMService.shared.getEmbedding(text: query) {
                 let vectorResults = try database.searchNotesByEmbedding(queryEmbedding, limit: limit)
                 if !vectorResults.isEmpty {
-                    return vectorResults.map { $0.0 }
+                    var results = vectorResults.map { $0.0 }
+                    // Apply category filter if specified
+                    if let category {
+                        results = results.filter { $0.category == category }
+                    }
+                    return results
                 }
             }
 
-            // Fallback to text search
+            // Fallback to text search (category filter built-in)
             return try database.searchNotes(query: query, category: category, limit: limit)
         } catch {
             print("[MemPalace] Note search failed: \(error)")

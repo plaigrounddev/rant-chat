@@ -183,27 +183,45 @@ final class WhisperService {
         var dataStart = 44  // Default
         var dataSize = data.count - 44
 
-        while offset < data.count - 8 {
+        while offset + 8 <= data.count {
             let chunkID = String(data: data[offset..<offset+4], encoding: .ascii) ?? ""
             let chunkSize = data.withUnsafeBytes { bytes in
                 bytes.load(fromByteOffset: offset + 4, as: UInt32.self)
             }
 
+            // Validate chunkSize won't overflow or exceed buffer
+            let chunkSizeInt = Int(chunkSize)
+            guard chunkSizeInt >= 0, offset + 8 + chunkSizeInt <= data.count else {
+                throw WhisperError.invalidAudioFormat
+            }
+
             if chunkID == "data" {
                 dataStart = offset + 8
-                dataSize = Int(chunkSize)
+                dataSize = chunkSizeInt
                 break
             }
 
-            offset += 8 + Int(chunkSize)
+            offset += 8 + chunkSizeInt
+        }
+
+        // Validate bounds before accessing sample buffer
+        guard dataStart >= 0,
+              dataSize >= 0,
+              dataStart + dataSize <= data.count else {
+            throw WhisperError.invalidAudioFormat
         }
 
         // Convert 16-bit PCM samples to float
         let sampleCount = dataSize / 2  // 16-bit = 2 bytes per sample
+        guard sampleCount > 0, sampleCount <= 100_000_000 else {
+            throw WhisperError.invalidAudioFormat
+        }
+
         var samples = [Float](repeating: 0, count: sampleCount)
 
         data.withUnsafeBytes { rawBuffer in
-            let int16Buffer = rawBuffer.baseAddress!.advanced(by: dataStart)
+            guard let base = rawBuffer.baseAddress else { return }
+            let int16Buffer = base.advanced(by: dataStart)
                 .assumingMemoryBound(to: Int16.self)
 
             for i in 0..<sampleCount {

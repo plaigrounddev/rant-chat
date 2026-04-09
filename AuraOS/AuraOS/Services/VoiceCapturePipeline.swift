@@ -243,9 +243,14 @@ final class VoiceCapturePipeline {
             payload: payloadJSON
         )
 
-        let onlineStatus = NetworkMonitor.shared.isConnected
+        // If already online and auto-execute is enabled, flush immediately
+        if NetworkMonitor.shared.isConnected && ActionQueueManager.shared.autoExecute {
+            await ActionQueueManager.shared.flushQueue()
+        }
+
+        let onlineStatus = NetworkMonitor.shared.isConnected && ActionQueueManager.shared.autoExecute
             ? "Will execute shortly"
-            : "Queued for when you're online"
+            : "Queued for review"
         return "⚡ Action queued: \(actionType.displayName). \(onlineStatus)"
     }
 
@@ -278,15 +283,7 @@ final class VoiceCapturePipeline {
         let memories = await memPalace.recall(query: query, limit: 3)
 
         if memories.isEmpty {
-            // No relevant memories found — save the query and try LLM
-            await memPalace.addNote(
-                rawTranscription: transcription,
-                content: query,
-                category: .query,
-                tags: ["query", "unanswered"]
-            )
-
-            // Try to answer with Gemma 4
+            // No relevant memories found — try LLM first
             if LLMService.shared.isLoaded {
                 let answer = await LLMService.shared.generateSync(
                     prompt: "Answer this question concisely: \(query)",
@@ -294,9 +291,24 @@ final class VoiceCapturePipeline {
                     temperature: 0.5
                 )
                 if !answer.isEmpty {
+                    // LLM answered — save as answered query
+                    await memPalace.addNote(
+                        rawTranscription: transcription,
+                        content: query,
+                        category: .query,
+                        tags: ["query", "answered"]
+                    )
                     return "🧠 \(answer)"
                 }
             }
+
+            // Both memory and LLM failed — save as unanswered
+            await memPalace.addNote(
+                rawTranscription: transcription,
+                content: query,
+                category: .query,
+                tags: ["query", "unanswered"]
+            )
 
             return "🔍 No relevant memories found for: \"\(query)\". Saved for later."
         }
